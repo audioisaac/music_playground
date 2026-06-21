@@ -1,11 +1,11 @@
-// Records the synth output to an audio blob AND captures a replayable
-// timeline of chord events. Sessions persist to localStorage.
+// Records the master output (synth or vocals) to an audio blob AND captures a
+// replayable timeline of chord events. Sessions persist to localStorage.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Tone from "tone";
 import type { ChordEvent, RecordedSession, ResolvedChord } from "../types";
 import { loadSessions, saveSessions } from "../lib/storage";
-import type { SynthApi } from "./useSynth";
+import type { InstrumentApi } from "./useInstrument";
 
 export interface RecorderApi {
   isRecording: boolean;
@@ -19,7 +19,7 @@ export interface RecorderApi {
   deleteSession: (id: string) => void;
 }
 
-export function useRecorder(synth: SynthApi): RecorderApi {
+export function useRecorder(instrument: InstrumentApi): RecorderApi {
   const [isRecording, setIsRecording] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
   const [sessions, setSessions] = useState<RecordedSession[]>([]);
@@ -40,8 +40,8 @@ export function useRecorder(synth: SynthApi): RecorderApi {
   }, []);
 
   const startRecording = useCallback(async () => {
-    await synth.start();
-    const node = synth.getNode();
+    await instrument.start();
+    const node = instrument.getRecordNode();
     if (!node) return;
     if (!recorderRef.current) recorderRef.current = new Tone.Recorder();
     node.connect(recorderRef.current);
@@ -50,13 +50,13 @@ export function useRecorder(synth: SynthApi): RecorderApi {
     recordingRef.current = true;
     recorderRef.current.start();
     setIsRecording(true);
-  }, [synth]);
+  }, [instrument]);
 
   const stopRecording = useCallback(async () => {
     const rec = recorderRef.current;
     if (!rec) return;
     const blob = await rec.stop();
-    const node = synth.getNode();
+    const node = instrument.getRecordNode();
     if (node) node.disconnect(rec);
     recordingRef.current = false;
     setIsRecording(false);
@@ -69,7 +69,7 @@ export function useRecorder(synth: SynthApi): RecorderApi {
       timeline: timelineRef.current,
     };
     await persist([session, ...sessions]);
-  }, [synth, sessions, persist]);
+  }, [instrument, sessions, persist]);
 
   const logEvent = useCallback(
     (action: "on" | "off", chord: ResolvedChord | null) => {
@@ -86,29 +86,29 @@ export function useRecorder(synth: SynthApi): RecorderApi {
   const stopReplay = useCallback(() => {
     replayTimersRef.current.forEach((id) => clearTimeout(id));
     replayTimersRef.current = [];
-    synth.release();
+    instrument.previewRelease();
     setIsReplaying(false);
-  }, [synth]);
+  }, [instrument]);
 
   const replaySession = useCallback(
     (session: RecordedSession) => {
       stopReplay();
-      synth.start();
+      instrument.start();
       setIsReplaying(true);
       for (const ev of session.timeline) {
         const id = window.setTimeout(() => {
-          if (ev.action === "on" && ev.chord) synth.setChord(ev.chord.notes);
-          else synth.release();
+          if (ev.action === "on" && ev.chord) instrument.previewAttack(ev.chord.notes);
+          else instrument.previewRelease();
         }, ev.t);
         replayTimersRef.current.push(id);
       }
       const end = window.setTimeout(() => {
-        synth.release();
+        instrument.previewRelease();
         setIsReplaying(false);
       }, session.durationMs + 200);
       replayTimersRef.current.push(end);
     },
-    [synth, stopReplay],
+    [instrument, stopReplay],
   );
 
   const deleteSession = useCallback(

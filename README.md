@@ -26,10 +26,21 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   Because shape matching ignores orientation, the two combine — e.g. a 7th shape
   pointing up = a forced-major 7th. (A diatonic extension like a dominant V7 is
   the modifier hand held sideways, since up forces major.)
-- **Hold to sustain** — the chord rings while you hold the shape and stops when
-  your hand changes or leaves the frame. A clenched fist = silence.
-- **Record** — capture the synth output to a downloadable audio file **and** a
-  replayable timeline of chord events. Replay any session in-app.
+- **Sound source** (Sound panel):
+  - **Synth** — a Tone.js polyphonic synth plays the chord.
+  - **My vocals** — a live harmonizer pitch-shifts your microphone voice into the
+    chord (relative harmony: it stacks the chord's intervals on whatever pitch you
+    sing, so the *quality* matches even though the absolute pitch follows you).
+- **Sustain trigger** (Sound panel):
+  - **Hand up** — the chord rings while you hold the shape, stops when the hand
+    leaves/changes. A clenched fist = silence.
+  - **While singing** — the chord only sounds while mic input is detected
+    (voice-activated gate, with a sensitivity slider).
+- **Record** — capture the master output (synth *or* vocals) to a downloadable
+  audio file **and** a replayable timeline of chord events. Replay any session in-app.
+
+> 🎧 In vocal or voice-gated modes, use headphones — speaker output can re-enter
+> the mic and feed back.
 
 ## Gesture Mapping (calibration)
 
@@ -56,7 +67,7 @@ The camera needs `localhost` or HTTPS (`getUserMedia`). Audio starts on the
 ```
 src/
   lib/        pure logic: musicTheory, handShape, defaultTemplates, gestureMap, chordEngine, storage, handLandmarker
-  hooks/      useHandTracking (camera + detect loop), useSynth, useRecorder
+  hooks/      useHandTracking (camera + detect loop), useInstrument (synth + vocal harmonizer + mic), useRecorder
   components/ CameraView, KeySelector, ChordDisplay, GestureMappingPanel, RecorderPanel, StatusBar
   App.tsx     wires poses → chord engine → synth + recorder (with frame debouncing)
 ```

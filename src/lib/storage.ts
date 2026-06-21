@@ -1,11 +1,32 @@
 // localStorage persistence for gesture mappings and recorded sessions.
 // Audio blobs are stored as base64 data URLs so a session survives reloads.
 
-import type { ChordEvent, RecordedSession } from "../types";
+import type { ChordEvent, RecordedSession, SoundSettings } from "../types";
 import { DEFAULT_CONFIG, GestureConfig } from "./gestureMap";
 
 const CONFIG_KEY = "gcs.gestureConfig.v2";
 const SESSIONS_KEY = "gcs.sessions.v1";
+const SETTINGS_KEY = "gcs.soundSettings.v1";
+
+export const DEFAULT_SETTINGS: SoundSettings = {
+  source: "synth",
+  sustainMode: "hand",
+  sensitivity: 0.5,
+};
+
+export function loadSettings(): SoundSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<SoundSettings>) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+export function saveSettings(settings: SoundSettings): void {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
 
 export function loadConfig(): GestureConfig {
   try {

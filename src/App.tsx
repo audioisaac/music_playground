@@ -6,23 +6,33 @@ import type {
   Key,
   Orientation,
   ResolvedChord,
+  SoundSettings as Settings,
 } from "./types";
 import { useHandTracking } from "./hooks/useHandTracking";
-import { useSynth } from "./hooks/useSynth";
+import { useInstrument } from "./hooks/useInstrument";
 import { useRecorder } from "./hooks/useRecorder";
 import { chordId, resolveChord } from "./lib/chordEngine";
 import { GestureConfig } from "./lib/gestureMap";
-import { loadConfig, saveConfig } from "./lib/storage";
+import { loadConfig, loadSettings, saveConfig, saveSettings } from "./lib/storage";
 import { StatusBar } from "./components/StatusBar";
 import { CameraView } from "./components/CameraView";
 import { KeySelector } from "./components/KeySelector";
 import { ChordDisplay } from "./components/ChordDisplay";
 import { GestureMappingPanel } from "./components/GestureMappingPanel";
 import { RecorderPanel } from "./components/RecorderPanel";
+import { SoundSettings } from "./components/SoundSettings";
 
 // How many consecutive frames a gesture must hold before it commits.
 // Smooths out detection jitter without adding noticeable latency.
 const STABLE_FRAMES = 2;
+// How long the voice gate stays open after the level drops, so words/breaths
+// don't stutter the sustain.
+const VOICE_HOLD_MS = 160;
+
+/** Voice-gate threshold in dB from the 0..1 sensitivity slider. */
+function thresholdDb(sensitivity: number): number {
+  return -30 - sensitivity * 35; // 0 -> -30 dB (loud), 1 -> -65 dB (sensitive)
+}
 
 interface LiveSigs {
   primaryPose: PoseVector | null;
@@ -42,6 +52,7 @@ export default function App() {
   const [started, setStarted] = useState(false);
   const [musicKey, setMusicKey] = useState<Key>({ root: "C", mode: "major" });
   const [config, setConfig] = useState<GestureConfig>(() => loadConfig());
+  const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [primaryHandedness, setPrimaryHandedness] = useState<Handedness>("Right");
   const [live, setLive] = useState<LiveSigs>({
     primaryPose: null,
@@ -53,26 +64,32 @@ export default function App() {
     primaryLabel: null,
     modifierLabel: null,
   });
+  const [audioUi, setAudioUi] = useState({ inputLevel: 0, voiceActive: false });
 
-  const synth = useSynth();
-  const recorder = useRecorder(synth);
+  const instrument = useInstrument();
+  const recorder = useRecorder(instrument);
 
   // Mutable mirrors so the per-frame callback can stay identity-stable.
   const keyRef = useRef(musicKey);
   const configRef = useRef(config);
+  const settingsRef = useRef(settings);
   const primaryHandRef = useRef(primaryHandedness);
-  const synthRef = useRef(synth);
+  const instrumentRef = useRef(instrument);
   const recorderRef = useRef(recorder);
   keyRef.current = musicKey;
   configRef.current = config;
+  settingsRef.current = settings;
   primaryHandRef.current = primaryHandedness;
-  synthRef.current = synth;
+  instrumentRef.current = instrument;
   recorderRef.current = recorder;
 
-  // Debounce / change-detection state.
+  // Gesture debounce + audio change-detection state.
   const pendingIdRef = useRef("silence");
   const pendingCountRef = useRef(0);
-  const committedIdRef = useRef("silence");
+  const committedShapeRef = useRef("silence");
+  const committedChordRef = useRef<ResolvedChord | null>(null);
+  const lastPlayKeyRef = useRef("silence");
+  const lastAboveRef = useRef(0);
   const lastLiveRef = useRef(0);
 
   const handlePoses = useCallback((poses: HandPose[]) => {
@@ -82,14 +99,9 @@ export default function App() {
     const primaryPose = primaryHandPose?.pose ?? null;
     const modifierPose = modifierHandPose?.pose ?? null;
     const modifierOrientation = modifierHandPose?.orientation ?? null;
-
-    // Throttle the live-pose UI update (used by the calibration panel).
     const now = performance.now();
-    if (now - lastLiveRef.current > 80) {
-      lastLiveRef.current = now;
-      setLive({ primaryPose, modifierPose, modifierOrientation });
-    }
 
+    // 1. Resolve the chord from the hands and debounce the gesture shape.
     const result = resolveChord(
       keyRef.current,
       primaryPose,
@@ -97,28 +109,57 @@ export default function App() {
       modifierOrientation,
       configRef.current,
     );
-    const id = chordId(result.chord);
-
-    if (id === pendingIdRef.current) {
+    const shapeId = chordId(result.chord);
+    if (shapeId === pendingIdRef.current) {
       pendingCountRef.current += 1;
     } else {
-      pendingIdRef.current = id;
+      pendingIdRef.current = shapeId;
       pendingCountRef.current = 1;
     }
-
-    if (pendingCountRef.current >= STABLE_FRAMES && id !== committedIdRef.current) {
-      committedIdRef.current = id;
-      if (result.chord) {
-        synthRef.current.setChord(result.chord.notes);
-        recorderRef.current.logEvent("on", result.chord);
-      } else {
-        synthRef.current.release();
-        recorderRef.current.logEvent("off", null);
-      }
+    if (pendingCountRef.current >= STABLE_FRAMES && shapeId !== committedShapeRef.current) {
+      committedShapeRef.current = shapeId;
+      committedChordRef.current = result.chord;
       setDisplay({
         chord: result.chord,
         primaryLabel: result.primaryLabel,
         modifierLabel: result.modifierLabel,
+      });
+    }
+
+    // 2. Compute the gate (what keeps the chord sounding).
+    const s = settingsRef.current;
+    const chord = committedChordRef.current;
+    let gate = false;
+    let voiceActive = false;
+    if (chord) {
+      if (s.sustainMode === "hand") {
+        gate = true;
+      } else {
+        const level = instrumentRef.current.getInputLevel();
+        if (level > thresholdDb(s.sensitivity)) lastAboveRef.current = now;
+        voiceActive = now - lastAboveRef.current < VOICE_HOLD_MS;
+        gate = voiceActive;
+      }
+    }
+
+    // 3. Drive the audio only when the (chord, gate) state changes.
+    const playKey = gate && chord ? committedShapeRef.current : "silence";
+    if (playKey !== lastPlayKeyRef.current) {
+      lastPlayKeyRef.current = playKey;
+      instrumentRef.current.update(chord ? chord.notes : null, gate);
+      recorderRef.current.logEvent(gate && chord ? "on" : "off", gate ? chord : null);
+    }
+
+    // 4. Throttled UI updates (calibration poses + input meter).
+    if (now - lastLiveRef.current > 80) {
+      lastLiveRef.current = now;
+      setLive({ primaryPose, modifierPose, modifierOrientation });
+      const level = instrumentRef.current.getInputLevel();
+      setAudioUi({
+        inputLevel: Number.isFinite(level)
+          ? Math.max(0, Math.min(1, (level + 60) / 60))
+          : 0,
+        voiceActive,
       });
     }
   }, []);
@@ -131,18 +172,39 @@ export default function App() {
   });
 
   const handleStart = useCallback(async () => {
-    await synth.start();
+    await instrument.start();
+    instrument.setSource(settingsRef.current.source);
     setStarted(true);
-  }, [synth]);
+  }, [instrument]);
 
   const handleConfigChange = useCallback((next: GestureConfig) => {
     setConfig(next);
     saveConfig(next);
   }, []);
 
+  const handleSettingsChange = useCallback((next: Settings) => {
+    setSettings(next);
+    saveSettings(next);
+  }, []);
+
+  // Apply source changes to the audio engine and force the next frame to
+  // re-drive the new path with the current chord.
+  useEffect(() => {
+    instrumentRef.current.setSource(settings.source);
+    lastPlayKeyRef.current = "force-rebuild";
+  }, [settings.source]);
+
+  // Open the mic when a feature needs it.
+  useEffect(() => {
+    if (started && (settings.source === "vocal" || settings.sustainMode === "voice")) {
+      instrumentRef.current.ensureMic();
+    }
+  }, [started, settings.source, settings.sustainMode]);
+
   // Re-voice the held chord when the key changes mid-play.
   useEffect(() => {
-    committedIdRef.current = "force-rebuild";
+    committedShapeRef.current = "force-rebuild";
+    lastPlayKeyRef.current = "force-rebuild";
   }, [musicKey]);
 
   return (
@@ -173,6 +235,14 @@ export default function App() {
         </div>
 
         <div className="right-col">
+          <SoundSettings
+            settings={settings}
+            onChange={handleSettingsChange}
+            micError={instrument.micError}
+            micReady={instrument.micReady}
+            inputLevel={audioUi.inputLevel}
+            voiceActive={audioUi.voiceActive}
+          />
           <KeySelector value={musicKey} onChange={setMusicKey} />
           <GestureMappingPanel
             config={config}
@@ -191,7 +261,8 @@ export default function App() {
           horns=vii°). Modifier hand stacks two things: its <em>shape</em> adds an
           extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
           the quality — point up = force major, down = force minor, sideways =
-          diatonic. Hold a shape to sustain; recalibrate any shape in Gesture Mapping.
+          diatonic. Choose the synth or your own harmonized vocals, and sustain
+          either while your hand is up or only while you sing.
         </p>
       </footer>
     </div>

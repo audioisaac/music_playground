@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildChord, diatonicTriad, romanNumeral } from "./musicTheory";
+import {
+  buildChord,
+  diatonicTriad,
+  noteToMidi,
+  relativeIntervals,
+  romanNumeral,
+} from "./musicTheory";
 import type { Key } from "../types";
 
 const CMaj: Key = { root: "C", mode: "major" };
@@ -75,6 +81,27 @@ describe("buildChord", () => {
     const g7 = buildChord(CMaj, 5, "diatonic", "seventh");
     expect(g7.notes).toEqual(["G4", "B4", "D5", "F5"]);
     expect(g7.name).toBe("G7");
+  });
+});
+
+describe("noteToMidi", () => {
+  it("maps note names to MIDI numbers (C4 = 60)", () => {
+    expect(noteToMidi("C4")).toBe(60);
+    expect(noteToMidi("A4")).toBe(69);
+    expect(noteToMidi("D#5")).toBe(75);
+    expect(noteToMidi("C5")).toBe(72);
+  });
+});
+
+describe("relativeIntervals", () => {
+  it("gives semitone offsets from the lowest note", () => {
+    expect(relativeIntervals(["C4", "E4", "G4"])).toEqual([0, 4, 7]);
+    expect(relativeIntervals(["C4", "E4", "G4", "B4"])).toEqual([0, 4, 7, 11]);
+  });
+
+  it("normalizes to the lowest note regardless of octave/order", () => {
+    expect(relativeIntervals(["G4", "C5", "E5"])).toEqual([0, 5, 9]);
+    expect(relativeIntervals([])).toEqual([]);
   });
 });
 

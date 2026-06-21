@@ -54,6 +54,30 @@ function pitchClass(root: NoteName): number {
   return NOTE_NAMES.indexOf(root);
 }
 
+/**
+ * Parse a Tone-style note name ("C4", "D#5") into a MIDI number (C4 = 60).
+ * Sharps only, matching how `buildChord` spells notes.
+ */
+export function noteToMidi(note: string): number {
+  const m = /^([A-G]#?)(-?\d+)$/.exec(note);
+  if (!m) throw new Error(`Bad note name: ${note}`);
+  const pc = NOTE_NAMES.indexOf(m[1] as NoteName);
+  const octave = parseInt(m[2], 10);
+  return (octave + 1) * 12 + pc;
+}
+
+/**
+ * Semitone offsets of a chord's notes relative to its lowest note, e.g.
+ * ["C4","E4","G4"] -> [0,4,7]. Used by the vocal harmonizer to shift the live
+ * voice into the chord (relative harmony — independent of the sung pitch).
+ */
+export function relativeIntervals(notes: string[]): number[] {
+  if (notes.length === 0) return [];
+  const midis = notes.map(noteToMidi);
+  const low = Math.min(...midis);
+  return midis.map((m) => m - low);
+}
+
 /** Roman numeral label for a degree given its quality. */
 export function romanNumeral(degree: Degree, quality: Quality): string {
   const base = ["I", "II", "III", "IV", "V", "VI", "VII"][degree - 1];

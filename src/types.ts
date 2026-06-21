@@ -48,6 +48,20 @@ export type HandRole = "primary" | "modifier";
 /** Which way a hand points (wrist→fingers). Drives the quality override. */
 export type Orientation = "up" | "down" | "side";
 
+/** Where the sustained sound comes from. */
+export type SoundSource = "synth" | "vocal";
+
+/** What keeps a chord sounding. */
+export type SustainMode = "hand" | "voice";
+
+/** Persisted audio preferences. */
+export interface SoundSettings {
+  source: SoundSource;
+  sustainMode: SustainMode;
+  /** 0..1; higher = the voice gate triggers on quieter singing. */
+  sensitivity: number;
+}
+
 /**
  * A normalized, pose-invariant description of a whole hand shape ("outline"):
  * a flat [x0,y0,x1,y1,...] vector of the 21 landmarks. See lib/handShape.ts.
