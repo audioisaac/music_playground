@@ -286,6 +286,13 @@ button.link {
   gap: 6px;
   align-items: center;
 }
+.map-list li.active-row {
+  color: var(--accent-2);
+}
+.map-list li.active-row .map-actions {
+  color: var(--accent-2);
+  font-weight: 600;
+}
 .map-actions button {
   background: var(--panel-2);
   color: var(--text);

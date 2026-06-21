@@ -12,13 +12,20 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   shaka (thumb + pinky) → vi, horns (index + pinky) → vii°. A relaxed/closed hand
   is silent. (Shapes are recognized holistically, not by counting fingers, so an
   ambiguous thumb no longer breaks detection.)
-- **Modifier hand** (default: left) — adds a "special chord":
-  - ☝️ index → **sus2** (the "2nd")
-  - index + middle → **sus4** (the "4th")
-  - index + middle + ring → **7th**
-  - four fingers → **add9**
-  - 👍 thumb only → **force MAJOR** (borrow a chord outside the key)
-  - 🤙 pinky only → **force MINOR** (e.g. play **Cm** while in **C major**)
+- **Modifier hand** (default: left) — stacks **two** independent things:
+  - **Shape → extension** ("special chord"):
+    - ☝️ index → **sus2** (the "2nd")
+    - index + middle → **sus4** (the "4th")
+    - index + middle + ring → **7th**
+    - four fingers → **add9**
+  - **Orientation → quality** (borrow a chord outside the key):
+    - point **up** → force **MAJOR**
+    - point **down** → force **MINOR** (e.g. play **Cm** while in **C major**)
+    - hold **sideways** → diatonic (in key)
+
+  Because shape matching ignores orientation, the two combine — e.g. a 7th shape
+  pointing up = a forced-major 7th. (A diatonic extension like a dominant V7 is
+  the modifier hand held sideways, since up forces major.)
 - **Hold to sustain** — the chord rings while you hold the shape and stops when
   your hand changes or leaves the frame. A clenched fist = silence.
 - **Record** — capture the synth output to a downloadable audio file **and** a

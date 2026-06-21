@@ -4,7 +4,7 @@
 import type { ChordEvent, RecordedSession } from "../types";
 import { DEFAULT_CONFIG, GestureConfig } from "./gestureMap";
 
-const CONFIG_KEY = "gcs.gestureConfig.v1";
+const CONFIG_KEY = "gcs.gestureConfig.v2";
 const SESSIONS_KEY = "gcs.sessions.v1";
 
 export function loadConfig(): GestureConfig {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizePose, poseDistance, Pt } from "./handShape";
+import { handOrientation, normalizePose, poseDistance, Pt } from "./handShape";
 
 // A deterministic, distinct set of 21 landmarks (geometry need not be a real
 // hand for invariance tests — only that points differ and palm length > 0).
@@ -45,6 +45,26 @@ describe("normalizePose", () => {
   it("returns a zero vector when the palm has no length", () => {
     const degenerate: Pt[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
     expect(normalizePose(degenerate, "Right").every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe("handOrientation", () => {
+  // Only the wrist (0) and middle-MCP (9) matter; fill the rest arbitrarily.
+  const oriented = (dx: number, dy: number): Pt[] => {
+    const pts: Pt[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
+    pts[9] = { x: 0.5 + dx, y: 0.5 + dy };
+    return pts;
+  };
+
+  it("classifies fingers above the wrist as 'up'", () => {
+    expect(handOrientation(oriented(0, -0.3))).toBe("up");
+  });
+  it("classifies fingers below the wrist as 'down'", () => {
+    expect(handOrientation(oriented(0, 0.3))).toBe("down");
+  });
+  it("classifies a horizontal hand as 'side'", () => {
+    expect(handOrientation(oriented(0.3, 0))).toBe("side");
+    expect(handOrientation(oriented(-0.3, 0))).toBe("side");
   });
 });
 

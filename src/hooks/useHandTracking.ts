@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getHandLandmarker } from "../lib/handLandmarker";
-import { normalizePose } from "../lib/handShape";
+import { handOrientation, normalizePose } from "../lib/handShape";
 import type { HandPose, Handedness } from "../types";
 
 export type TrackingStatus = "idle" | "loading" | "running" | "error";
@@ -127,6 +127,7 @@ export function useHandTracking({
             return {
               handedness,
               pose: normalizePose(lm, handedness),
+              orientation: handOrientation(lm),
               landmarks: lm,
             };
           });

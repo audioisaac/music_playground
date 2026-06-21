@@ -5,7 +5,7 @@
 // we treat the hand as an outline: normalize all 21 landmarks into a
 // pose-invariant vector and compare whole shapes by distance.
 
-import type { Handedness, PoseVector } from "../types";
+import type { Handedness, Orientation, PoseVector } from "../types";
 
 export interface Pt {
   x: number;
@@ -16,6 +16,28 @@ export interface Pt {
 const WRIST = 0;
 const MIDDLE_MCP = 9;
 const EPS = 1e-6;
+
+// cos(40°): how close to vertical the hand must point to count as up/down.
+const VERTICAL_COS = 0.766;
+
+/**
+ * Which way the hand points, from the wrist→middle-MCP axis in image space
+ * (image y grows downward). Used as an orthogonal channel to the
+ * orientation-invariant shape matching: up/down vs sideways.
+ */
+export function handOrientation(landmarks: Pt[]): Orientation {
+  const wrist = landmarks[WRIST];
+  const mid = landmarks[MIDDLE_MCP];
+  const vx = mid.x - wrist.x;
+  const vy = mid.y - wrist.y;
+  const len = Math.hypot(vx, vy);
+  if (len < EPS) return "side";
+  // Component along vertical-up (0,-1), normalized.
+  const cosUp = -vy / len;
+  if (cosUp > VERTICAL_COS) return "up";
+  if (cosUp < -VERTICAL_COS) return "down";
+  return "side";
+}
 
 /**
  * Normalize a hand into a translation/scale/rotation/chirality-invariant

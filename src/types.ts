@@ -45,6 +45,9 @@ export type Handedness = "Left" | "Right";
 /** Role a hand plays in the instrument. */
 export type HandRole = "primary" | "modifier";
 
+/** Which way a hand points (wrist→fingers). Drives the quality override. */
+export type Orientation = "up" | "down" | "side";
+
 /**
  * A normalized, pose-invariant description of a whole hand shape ("outline"):
  * a flat [x0,y0,x1,y1,...] vector of the 21 landmarks. See lib/handShape.ts.
@@ -55,14 +58,11 @@ export interface HandPose {
   handedness: Handedness;
   /** Normalized whole-hand shape vector, used for gesture matching. */
   pose: PoseVector;
+  /** Which way the hand points — orthogonal to the shape match. */
+  orientation: Orientation;
   /** Raw 21 landmarks (normalized 0..1), kept for the overlay. */
   landmarks: Array<{ x: number; y: number; z: number }>;
 }
-
-/** What a modifier-hand binding resolves to. */
-export type ModifierBinding =
-  | { kind: "extension"; extension: Extension }
-  | { kind: "override"; override: "major" | "minor" };
 
 /** The fully resolved chord the engine wants to sound. */
 export interface ResolvedChord {

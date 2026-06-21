@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PoseVector, HandPose, Handedness, Key, ResolvedChord } from "./types";
+import type {
+  PoseVector,
+  HandPose,
+  Handedness,
+  Key,
+  Orientation,
+  ResolvedChord,
+} from "./types";
 import { useHandTracking } from "./hooks/useHandTracking";
 import { useSynth } from "./hooks/useSynth";
 import { useRecorder } from "./hooks/useRecorder";
@@ -20,6 +27,7 @@ const STABLE_FRAMES = 2;
 interface LiveSigs {
   primaryPose: PoseVector | null;
   modifierPose: PoseVector | null;
+  modifierOrientation: Orientation | null;
 }
 interface DisplayState {
   chord: ResolvedChord | null;
@@ -35,7 +43,11 @@ export default function App() {
   const [musicKey, setMusicKey] = useState<Key>({ root: "C", mode: "major" });
   const [config, setConfig] = useState<GestureConfig>(() => loadConfig());
   const [primaryHandedness, setPrimaryHandedness] = useState<Handedness>("Right");
-  const [live, setLive] = useState<LiveSigs>({ primaryPose: null, modifierPose: null });
+  const [live, setLive] = useState<LiveSigs>({
+    primaryPose: null,
+    modifierPose: null,
+    modifierOrientation: null,
+  });
   const [display, setDisplay] = useState<DisplayState>({
     chord: null,
     primaryLabel: null,
@@ -69,15 +81,22 @@ export default function App() {
     const modifierHandPose = poses.find((p) => p.handedness !== primaryHand) ?? null;
     const primaryPose = primaryHandPose?.pose ?? null;
     const modifierPose = modifierHandPose?.pose ?? null;
+    const modifierOrientation = modifierHandPose?.orientation ?? null;
 
     // Throttle the live-pose UI update (used by the calibration panel).
     const now = performance.now();
     if (now - lastLiveRef.current > 80) {
       lastLiveRef.current = now;
-      setLive({ primaryPose, modifierPose });
+      setLive({ primaryPose, modifierPose, modifierOrientation });
     }
 
-    const result = resolveChord(keyRef.current, primaryPose, modifierPose, configRef.current);
+    const result = resolveChord(
+      keyRef.current,
+      primaryPose,
+      modifierPose,
+      modifierOrientation,
+      configRef.current,
+    );
     const id = chordId(result.chord);
 
     if (id === pendingIdRef.current) {
@@ -160,6 +179,7 @@ export default function App() {
             onChange={handleConfigChange}
             primaryPose={live.primaryPose}
             modifierPose={live.modifierPose}
+            modifierOrientation={live.modifierOrientation}
           />
           <RecorderPanel recorder={recorder} />
         </div>
@@ -168,9 +188,10 @@ export default function App() {
       <footer className="footer">
         <p>
           Chord hand shapes pick the scale degree (index=I, peace=ii, … shaka=vi,
-          horns=vii°). Modifier hand: add sus2 / sus4 / 7th, or force major/minor
-          for borrowed chords. Hold a shape to sustain; recalibrate any shape to
-          your own hand in Gesture Mapping.
+          horns=vii°). Modifier hand stacks two things: its <em>shape</em> adds an
+          extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
+          the quality — point up = force major, down = force minor, sideways =
+          diatonic. Hold a shape to sustain; recalibrate any shape in Gesture Mapping.
         </p>
       </footer>
     </div>

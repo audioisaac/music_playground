@@ -1,14 +1,21 @@
 // The configurable layer that turns a whole-hand shape into musical intent.
 //
-// Primary hand  -> scale degree (1..7)
-// Modifier hand -> an extension ("special chord") OR a major/minor override
+// Primary hand  -> scale degree (1..7)         [shape]
+// Modifier hand -> extension ("special chord")  [shape]
+//               +  major/minor/diatonic quality [orientation, stacks on top]
 //
-// Each binding stores a normalized pose template (a captured "outline"). A live
-// hand resolves to the nearest template within MATCH_THRESHOLD, so recognition
-// is holistic — a mis-tucked thumb nudges the distance instead of flipping a
-// per-finger boolean. The calibration UI re-captures templates to the user's hand.
+// Shape recognition is holistic: a hand resolves to the nearest pose template
+// within MATCH_THRESHOLD, so a mis-tucked thumb only nudges the distance. Shape
+// matching is orientation-invariant, so hand orientation is a free orthogonal
+// channel used for the quality override.
 
-import type { Degree, ModifierBinding, PoseVector } from "../types";
+import type {
+  Degree,
+  Extension,
+  Orientation,
+  PoseVector,
+  QualityMode,
+} from "../types";
 import { poseDistance } from "./handShape";
 import {
   DEFAULT_MODIFIER,
@@ -29,12 +36,26 @@ export interface PrimaryEntry {
 export interface ModifierEntry {
   id: string;
   template: PoseVector;
-  value: ModifierBinding;
+  extension: Extension;
   label: string;
 }
 export interface GestureConfig {
   primary: PrimaryEntry[];
   modifier: ModifierEntry[];
+}
+
+/**
+ * Modifier-hand orientation -> quality override. Fixed mapping:
+ * point up = force major, down = force minor, sideways = diatonic (no borrow).
+ */
+export const ORIENTATION_QUALITY: Record<Orientation, QualityMode> = {
+  up: "majorOverride",
+  down: "minorOverride",
+  side: "diatonic",
+};
+
+export function resolveOverride(orientation: Orientation): QualityMode {
+  return ORIENTATION_QUALITY[orientation];
 }
 
 export function makeDefaultConfig(): GestureConfig {
@@ -46,9 +67,9 @@ export function makeDefaultConfig(): GestureConfig {
       label: d.label,
     })),
     modifier: DEFAULT_MODIFIER.map((m) => ({
-      id: m.key,
+      id: m.extension,
       template: makeTemplate(m.extended),
-      value: m.value,
+      extension: m.extension,
       label: m.label,
     })),
   };
@@ -86,13 +107,13 @@ export function resolvePrimary(
   return e ? { degree: e.degree, label: e.label } : null;
 }
 
-/** Resolve the modifier hand to an extension or override (nearest, else null). */
-export function resolveModifier(
+/** Resolve the modifier hand's shape to an extension (nearest, else null). */
+export function resolveExtension(
   pose: PoseVector,
   config: GestureConfig,
-): { value: ModifierBinding; label: string } | null {
+): { extension: Extension; label: string } | null {
   const e = nearest(pose, config.modifier);
-  return e ? { value: e.value, label: e.label } : null;
+  return e ? { extension: e.extension, label: e.label } : null;
 }
 
 /** Re-capture the template for a degree (upsert by degree). */
@@ -108,21 +129,14 @@ export function bindPrimary(
   return { ...config, primary };
 }
 
-/** Re-capture the template for a modifier (upsert by binding identity). */
-export function bindModifier(
+/** Re-capture the template for an extension (upsert by extension). */
+export function bindExtension(
   config: GestureConfig,
   template: PoseVector,
-  value: ModifierBinding,
+  extension: Extension,
   label: string,
 ): GestureConfig {
-  const id = modifierId(value);
-  const modifier = config.modifier.filter((e) => modifierId(e.value) !== id);
-  modifier.push({ id, template, value, label });
+  const modifier = config.modifier.filter((e) => e.extension !== extension);
+  modifier.push({ id: extension, template, extension, label });
   return { ...config, modifier };
-}
-
-export function modifierId(value: ModifierBinding): string {
-  return value.kind === "extension"
-    ? `ext-${value.extension}`
-    : `ovr-${value.override}`;
 }

@@ -4,7 +4,7 @@
 // small set of distinct poses is forgiving, and the Gesture Mapping panel lets
 // the user re-capture any gesture to their own hand for better accuracy.
 
-import type { Degree, ModifierBinding, PoseVector } from "../types";
+import type { Degree, Extension, PoseVector } from "../types";
 import { normalizePose, Pt } from "./handShape";
 
 // A flat, upright, palm-forward RIGHT hand. Coordinates are arbitrary units
@@ -88,8 +88,7 @@ export interface DefaultPrimary {
   label: string;
 }
 export interface DefaultModifier {
-  key: string;
-  value: ModifierBinding;
+  extension: Extension;
   extended: number[];
   label: string;
 }
@@ -105,11 +104,11 @@ export const DEFAULT_PRIMARY: DefaultPrimary[] = [
   { degree: 7, extended: [1, 4], label: "Index + pinky (horns)" },
 ];
 
+// Extensions only — the major/minor override is now driven by hand orientation
+// (see ORIENTATION_QUALITY in gestureMap.ts), so it can stack with these.
 export const DEFAULT_MODIFIER: DefaultModifier[] = [
-  { key: "sus2", value: { kind: "extension", extension: "sus2" }, extended: [1], label: "Index — sus2 (2nd)" },
-  { key: "sus4", value: { kind: "extension", extension: "sus4" }, extended: [1, 2], label: "Index + middle — sus4 (4th)" },
-  { key: "seventh", value: { kind: "extension", extension: "seventh" }, extended: [1, 2, 3], label: "Three fingers — 7th" },
-  { key: "add9", value: { kind: "extension", extension: "add9" }, extended: [1, 2, 3, 4], label: "Four fingers — add9" },
-  { key: "major", value: { kind: "override", override: "major" }, extended: [0], label: "Thumb only — force MAJOR" },
-  { key: "minor", value: { kind: "override", override: "minor" }, extended: [4], label: "Pinky only — force MINOR" },
+  { extension: "sus2", extended: [1], label: "Index — sus2 (2nd)" },
+  { extension: "sus4", extended: [1, 2], label: "Index + middle — sus4 (4th)" },
+  { extension: "seventh", extended: [1, 2, 3], label: "Three fingers — 7th" },
+  { extension: "add9", extended: [1, 2, 3, 4], label: "Four fingers — add9" },
 ];

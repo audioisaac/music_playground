@@ -1,9 +1,9 @@
-import type { PoseVector } from "../types";
+import type { Orientation, PoseVector } from "../types";
 import {
   GestureConfig,
-  bindModifier,
+  ORIENTATION_QUALITY,
+  bindExtension,
   bindPrimary,
-  modifierId,
 } from "../lib/gestureMap";
 import {
   DEFAULT_MODIFIER,
@@ -17,6 +17,7 @@ interface Props {
   onChange: (config: GestureConfig) => void;
   primaryPose: PoseVector | null;
   modifierPose: PoseVector | null;
+  modifierOrientation: Orientation | null;
 }
 
 function Detected({ pose }: { pose: PoseVector | null }) {
@@ -27,11 +28,24 @@ function Detected({ pose }: { pose: PoseVector | null }) {
   );
 }
 
+const ORIENTATION_ROWS: Array<{ o: Orientation; arrow: string }> = [
+  { o: "up", arrow: "↑ pointing up" },
+  { o: "down", arrow: "↓ pointing down" },
+  { o: "side", arrow: "→ sideways" },
+];
+
+const QUALITY_LABEL: Record<string, string> = {
+  majorOverride: "force MAJOR",
+  minorOverride: "force MINOR",
+  diatonic: "diatonic (in key)",
+};
+
 export function GestureMappingPanel({
   config,
   onChange,
   primaryPose,
   modifierPose,
+  modifierOrientation,
 }: Props) {
   return (
     <section className="panel mapping-panel">
@@ -81,19 +95,21 @@ export function GestureMappingPanel({
 
       <div className="map-section">
         <div className="map-head">
-          <h4>Modifier hand → special chord</h4>
+          <h4>Modifier hand shape → extension</h4>
           <Detected pose={modifierPose} />
         </div>
         <ul className="map-list">
           {DEFAULT_MODIFIER.map((m) => (
-            <li key={modifierId(m.value)}>
+            <li key={m.extension}>
               <span className="map-label">{m.label}</span>
               <span className="map-actions">
                 <button
                   disabled={!modifierPose}
                   onClick={() =>
                     modifierPose &&
-                    onChange(bindModifier(config, modifierPose, m.value, m.label))
+                    onChange(
+                      bindExtension(config, modifierPose, m.extension, m.label),
+                    )
                   }
                 >
                   Recapture
@@ -102,13 +118,39 @@ export function GestureMappingPanel({
                   className="link"
                   onClick={() =>
                     onChange(
-                      bindModifier(config, makeTemplate(m.extended), m.value, m.label),
+                      bindExtension(
+                        config,
+                        makeTemplate(m.extended),
+                        m.extension,
+                        m.label,
+                      ),
                     )
                   }
                 >
                   reset
                 </button>
               </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="map-section">
+        <div className="map-head">
+          <h4>Modifier hand orientation → quality</h4>
+        </div>
+        <p className="hint">
+          Stacks on top of the extension above, so you can combine e.g. force
+          major + 7th.
+        </p>
+        <ul className="map-list">
+          {ORIENTATION_ROWS.map(({ o, arrow }) => (
+            <li
+              key={o}
+              className={modifierOrientation === o && modifierPose ? "active-row" : ""}
+            >
+              <span className="map-label">{arrow}</span>
+              <span className="map-actions">{QUALITY_LABEL[ORIENTATION_QUALITY[o]]}</span>
             </li>
           ))}
         </ul>

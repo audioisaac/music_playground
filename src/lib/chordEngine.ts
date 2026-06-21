@@ -1,14 +1,20 @@
-// Combine the two hands' signatures into a single resolved chord (or silence).
+// Combine the two hands into a single resolved chord (or silence).
 
 import type {
   PoseVector,
   Key,
+  Orientation,
   QualityMode,
   Extension,
   ResolvedChord,
 } from "../types";
 import { buildChord } from "./musicTheory";
-import { GestureConfig, resolveModifier, resolvePrimary } from "./gestureMap";
+import {
+  GestureConfig,
+  resolveExtension,
+  resolveOverride,
+  resolvePrimary,
+} from "./gestureMap";
 
 export interface EngineResult {
   chord: ResolvedChord | null;
@@ -19,13 +25,17 @@ export interface EngineResult {
 
 /**
  * Resolve the sounding chord from the current hand poses.
- * `primarySig` selects the degree; `modifierSig` adds an extension or a
- * major/minor override. A missing/fist primary hand yields silence.
+ *
+ * `primaryPose` selects the degree. The modifier hand contributes two stacking
+ * axes: its shape (`modifierPose`) adds an extension, and its orientation
+ * (`modifierOrientation`) sets the major/minor/diatonic quality override.
+ * A missing/fist primary hand yields silence.
  */
 export function resolveChord(
   key: Key,
   primaryPose: PoseVector | null,
   modifierPose: PoseVector | null,
+  modifierOrientation: Orientation | null,
   config: GestureConfig,
 ): EngineResult {
   if (!primaryPose) {
@@ -39,23 +49,28 @@ export function resolveChord(
 
   let extension: Extension = "none";
   let qualityMode: QualityMode = "diatonic";
-  let modifierLabel: string | null = null;
+  const labelParts: string[] = [];
 
+  // The modifier hand is only active while it is present in frame.
   if (modifierPose) {
-    const mod = resolveModifier(modifierPose, config);
-    if (mod) {
-      modifierLabel = mod.label;
-      if (mod.value.kind === "extension") {
-        extension = mod.value.extension;
-      } else {
-        qualityMode =
-          mod.value.override === "major" ? "majorOverride" : "minorOverride";
-      }
+    if (modifierOrientation) {
+      qualityMode = resolveOverride(modifierOrientation);
+      if (qualityMode === "majorOverride") labelParts.push("force maj");
+      else if (qualityMode === "minorOverride") labelParts.push("force min");
+    }
+    const ext = resolveExtension(modifierPose, config);
+    if (ext) {
+      extension = ext.extension;
+      labelParts.push(ext.label);
     }
   }
 
   const chord = buildChord(key, primary.degree, qualityMode, extension);
-  return { chord, primaryLabel: primary.label, modifierLabel };
+  return {
+    chord,
+    primaryLabel: primary.label,
+    modifierLabel: labelParts.length ? labelParts.join(" · ") : null,
+  };
 }
 
 /** Stable identity for a resolved chord, used to detect changes. */

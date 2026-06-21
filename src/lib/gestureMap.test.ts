@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CONFIG,
+  bindExtension,
   bindPrimary,
   makeDefaultConfig,
-  resolveModifier,
+  resolveExtension,
+  resolveOverride,
   resolvePrimary,
 } from "./gestureMap";
 import { makeTemplate } from "./defaultTemplates";
@@ -30,19 +32,28 @@ describe("resolvePrimary (whole-hand matching)", () => {
   });
 });
 
-describe("resolveModifier", () => {
-  it("matches modifier shapes to extensions and overrides", () => {
-    expect(resolveModifier(makeTemplate([1]), DEFAULT_CONFIG)?.value).toEqual({
-      kind: "extension",
-      extension: "sus2",
-    });
-    expect(resolveModifier(makeTemplate([0]), DEFAULT_CONFIG)?.value).toEqual({
-      kind: "override",
-      override: "major",
-    });
-    expect(resolveModifier(makeTemplate([4]), DEFAULT_CONFIG)?.value).toEqual({
-      kind: "override",
-      override: "minor",
-    });
+describe("resolveExtension (modifier shape)", () => {
+  it("matches modifier shapes to extensions", () => {
+    expect(resolveExtension(makeTemplate([1]), DEFAULT_CONFIG)?.extension).toBe("sus2");
+    expect(resolveExtension(makeTemplate([1, 2]), DEFAULT_CONFIG)?.extension).toBe("sus4");
+    expect(resolveExtension(makeTemplate([1, 2, 3]), DEFAULT_CONFIG)?.extension).toBe("seventh");
+  });
+
+  it("returns null for a rest/closed hand", () => {
+    expect(resolveExtension(makeTemplate([]), DEFAULT_CONFIG)).toBeNull();
+  });
+
+  it("recapture replaces an extension's template", () => {
+    const cfg = bindExtension(makeDefaultConfig(), makeTemplate([0]), "seventh", "thumb");
+    expect(resolveExtension(makeTemplate([0]), cfg)?.extension).toBe("seventh");
+    expect(cfg.modifier.filter((e) => e.extension === "seventh")).toHaveLength(1);
+  });
+});
+
+describe("resolveOverride (modifier orientation)", () => {
+  it("maps up/down/side to quality", () => {
+    expect(resolveOverride("up")).toBe("majorOverride");
+    expect(resolveOverride("down")).toBe("minorOverride");
+    expect(resolveOverride("side")).toBe("diatonic");
   });
 });
