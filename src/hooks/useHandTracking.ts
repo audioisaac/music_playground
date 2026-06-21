@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getHandLandmarker } from "../lib/handLandmarker";
-import { computeSignature } from "../lib/fingerPose";
+import { normalizePose } from "../lib/handShape";
 import type { HandPose, Handedness } from "../types";
 
 export type TrackingStatus = "idle" | "loading" | "running" | "error";
@@ -16,6 +16,28 @@ const CONNECTIONS: Array<[number, number]> = [
   [9, 13], [13, 14], [14, 15], [15, 16], // ring
   [13, 17], [17, 18], [18, 19], [19, 20], [0, 17], // pinky + palm
 ];
+
+/** Andrew's monotone-chain convex hull, returns boundary points in order. */
+function convexHull(pts: Array<{ x: number; y: number }>) {
+  const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cross = (o: typeof p[0], a: typeof p[0], b: typeof p[0]) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: typeof p = [];
+  for (const pt of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0)
+      lower.pop();
+    lower.push(pt);
+  }
+  const upper: typeof p = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const pt = p[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0)
+      upper.pop();
+    upper.push(pt);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
 
 interface Options {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -53,6 +75,26 @@ export function useHandTracking({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const pose of poses) {
         const color = pose.handedness === "Right" ? "#4ade80" : "#60a5fa";
+
+        // Hand outline: a translucent hull around the landmarks.
+        const hull = convexHull(
+          pose.landmarks.map((p) => ({
+            x: p.x * canvas.width,
+            y: p.y * canvas.height,
+          })),
+        );
+        if (hull.length >= 3) {
+          ctx.beginPath();
+          ctx.moveTo(hull[0].x, hull[0].y);
+          for (const h of hull.slice(1)) ctx.lineTo(h.x, h.y);
+          ctx.closePath();
+          ctx.fillStyle = `${color}22`;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.fill();
+          ctx.stroke();
+        }
+
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         ctx.lineWidth = 3;
@@ -79,12 +121,15 @@ export function useHandTracking({
         if (ts !== lastTs) {
           lastTs = ts;
           const result = landmarker.detectForVideo(video, ts);
-          const poses: HandPose[] = result.landmarks.map((lm, i) => ({
-            handedness: (result.handednesses[i]?.[0]?.categoryName ??
-              "Right") as Handedness,
-            fingers: computeSignature(lm),
-            landmarks: lm,
-          }));
+          const poses: HandPose[] = result.landmarks.map((lm, i) => {
+            const handedness = (result.handednesses[i]?.[0]?.categoryName ??
+              "Right") as Handedness;
+            return {
+              handedness,
+              pose: normalizePose(lm, handedness),
+              landmarks: lm,
+            };
+          });
           draw(poses);
           onPosesRef.current(poses);
         }

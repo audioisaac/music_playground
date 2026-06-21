@@ -7,9 +7,11 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
 ## How it works
 
 - **Pick a key** — choose a root note and major/minor.
-- **Chord hand** (default: your right hand) — the **number of extended fingers**
-  selects the scale degree: 1 finger → I, 2 → ii, … 5 → V. Degrees **6 (vi)** and
-  **7 (vii°)** are reached with bound shapes (see *Gesture Mapping*).
+- **Chord hand** (default: your right hand) — a **whole hand shape** selects the
+  scale degree: index → I, peace → ii, three → iii, four → IV, open palm → V,
+  shaka (thumb + pinky) → vi, horns (index + pinky) → vii°. A relaxed/closed hand
+  is silent. (Shapes are recognized holistically, not by counting fingers, so an
+  ambiguous thumb no longer breaks detection.)
 - **Modifier hand** (default: left) — adds a "special chord":
   - ☝️ index → **sus2** (the "2nd")
   - index + middle → **sus4** (the "4th")
@@ -24,9 +26,11 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
 
 ## Gesture Mapping (calibration)
 
-Open the **Gesture Mapping** panel to see your live hand shapes and bind any
-shape to a degree or modifier — this is how you assign degrees **6 and 7**, and
-how you customize everything else. Bindings persist in `localStorage`.
+Recognition matches your hand against saved shape templates. The app ships with
+built-in templates so it works immediately, but hands vary — open the **Gesture
+Mapping** panel, hold a shape in front of the camera, and press **Recapture** to
+teach any gesture to your own hand (or **reset** it to the built-in shape).
+Templates persist in `localStorage`.
 
 ## Run
 
@@ -44,7 +48,7 @@ The camera needs `localhost` or HTTPS (`getUserMedia`). Audio starts on the
 
 ```
 src/
-  lib/        pure logic: musicTheory, fingerPose, gestureMap, chordEngine, storage, handLandmarker
+  lib/        pure logic: musicTheory, handShape, defaultTemplates, gestureMap, chordEngine, storage, handLandmarker
   hooks/      useHandTracking (camera + detect loop), useSynth, useRecorder
   components/ CameraView, KeySelector, ChordDisplay, GestureMappingPanel, RecorderPanel, StatusBar
   App.tsx     wires poses → chord engine → synth + recorder (with frame debouncing)

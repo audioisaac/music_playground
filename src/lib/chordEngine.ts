@@ -1,7 +1,7 @@
 // Combine the two hands' signatures into a single resolved chord (or silence).
 
 import type {
-  FingerSignature,
+  PoseVector,
   Key,
   QualityMode,
   Extension,
@@ -24,15 +24,15 @@ export interface EngineResult {
  */
 export function resolveChord(
   key: Key,
-  primarySig: FingerSignature | null,
-  modifierSig: FingerSignature | null,
+  primaryPose: PoseVector | null,
+  modifierPose: PoseVector | null,
   config: GestureConfig,
 ): EngineResult {
-  if (!primarySig) {
+  if (!primaryPose) {
     return { chord: null, primaryLabel: null, modifierLabel: null };
   }
 
-  const primary = resolvePrimary(primarySig, config);
+  const primary = resolvePrimary(primaryPose, config);
   if (!primary) {
     return { chord: null, primaryLabel: null, modifierLabel: null };
   }
@@ -41,8 +41,8 @@ export function resolveChord(
   let qualityMode: QualityMode = "diatonic";
   let modifierLabel: string | null = null;
 
-  if (modifierSig) {
-    const mod = resolveModifier(modifierSig, config);
+  if (modifierPose) {
+    const mod = resolveModifier(modifierPose, config);
     if (mod) {
       modifierLabel = mod.label;
       if (mod.value.kind === "extension") {

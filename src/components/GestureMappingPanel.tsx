@@ -1,146 +1,121 @@
-import { useState } from "react";
-import type { Degree, FingerSignature, ModifierBinding } from "../types";
+import type { PoseVector } from "../types";
 import {
   GestureConfig,
   bindModifier,
   bindPrimary,
+  modifierId,
 } from "../lib/gestureMap";
-import { encodeSignature } from "../lib/fingerPose";
+import {
+  DEFAULT_MODIFIER,
+  DEFAULT_PRIMARY,
+  makeTemplate,
+} from "../lib/defaultTemplates";
 import { resetConfig } from "../lib/storage";
 
 interface Props {
   config: GestureConfig;
   onChange: (config: GestureConfig) => void;
-  primarySig: FingerSignature | null;
-  modifierSig: FingerSignature | null;
+  primaryPose: PoseVector | null;
+  modifierPose: PoseVector | null;
 }
 
-const FINGER_LABELS = ["👍", "☝️", "🖕", "💍", "🤙"];
-
-function PatternDots({ pattern }: { pattern: string }) {
+function Detected({ pose }: { pose: PoseVector | null }) {
   return (
-    <span className="pattern-dots">
-      {pattern.split("").map((c, i) => (
-        <span key={i} className={c === "1" ? "on" : "off"} title={FINGER_LABELS[i]}>
-          {c === "1" ? "●" : "○"}
-        </span>
-      ))}
+    <span className={`detect ${pose ? "on" : "off"}`}>
+      {pose ? "● hand detected" : "○ no hand"}
     </span>
   );
 }
 
-const MODIFIER_OPTIONS: Array<{ key: string; value: ModifierBinding; label: string }> = [
-  { key: "sus2", value: { kind: "extension", extension: "sus2" }, label: "sus2 (2nd)" },
-  { key: "sus4", value: { kind: "extension", extension: "sus4" }, label: "sus4 (4th)" },
-  { key: "seventh", value: { kind: "extension", extension: "seventh" }, label: "7th" },
-  { key: "add9", value: { kind: "extension", extension: "add9" }, label: "add9" },
-  { key: "maj", value: { kind: "override", override: "major" }, label: "force MAJOR" },
-  { key: "min", value: { kind: "override", override: "minor" }, label: "force MINOR" },
-];
-
 export function GestureMappingPanel({
   config,
   onChange,
-  primarySig,
-  modifierSig,
+  primaryPose,
+  modifierPose,
 }: Props) {
-  const [degree, setDegree] = useState<Degree>(6);
-  const [modKey, setModKey] = useState<string>("seventh");
-
-  const primaryPattern = primarySig ? encodeSignature(primarySig) : null;
-  const modifierPattern = modifierSig ? encodeSignature(modifierSig) : null;
-
-  const bindCurrentPrimary = () => {
-    if (!primaryPattern) return;
-    onChange(
-      bindPrimary(config, primaryPattern, degree, `Custom → degree ${degree}`),
-    );
-  };
-
-  const bindCurrentModifier = () => {
-    if (!modifierPattern) return;
-    const opt = MODIFIER_OPTIONS.find((o) => o.key === modKey)!;
-    onChange(bindModifier(config, modifierPattern, opt.value, opt.label));
-  };
-
-  const removePrimary = (pattern: string) =>
-    onChange({ ...config, primary: config.primary.filter((e) => e.pattern !== pattern) });
-  const removeModifier = (pattern: string) =>
-    onChange({ ...config, modifier: config.modifier.filter((e) => e.pattern !== pattern) });
-
   return (
     <section className="panel mapping-panel">
       <h2>Gesture Mapping</h2>
       <p className="hint">
-        Counts 1–5 on the chord hand map to degrees 1–5 automatically. Bind a
-        shape here to reach <strong>6 &amp; 7</strong> or to customize anything.
+        Each gesture is matched by whole hand shape. Hold a shape in front of the
+        camera and press <strong>Recapture</strong> to teach it your own hand, or
+        <strong> reset</strong> to the built-in shape.
       </p>
 
-      <div className="bind-row">
-        <div>
-          <div className="bind-label">Chord hand now:</div>
-          {primaryPattern ? <PatternDots pattern={primaryPattern} /> : <em>none</em>}
+      <div className="map-section">
+        <div className="map-head">
+          <h4>Chord hand → degree</h4>
+          <Detected pose={primaryPose} />
         </div>
-        <select
-          value={degree}
-          onChange={(e) => setDegree(Number(e.target.value) as Degree)}
-        >
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <option key={d} value={d}>
-              degree {d}
-            </option>
-          ))}
-        </select>
-        <button disabled={!primaryPattern} onClick={bindCurrentPrimary}>
-          Bind shape
-        </button>
-      </div>
-
-      <div className="bind-row">
-        <div>
-          <div className="bind-label">Modifier hand now:</div>
-          {modifierPattern ? <PatternDots pattern={modifierPattern} /> : <em>none</em>}
-        </div>
-        <select value={modKey} onChange={(e) => setModKey(e.target.value)}>
-          {MODIFIER_OPTIONS.map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <button disabled={!modifierPattern} onClick={bindCurrentModifier}>
-          Bind shape
-        </button>
-      </div>
-
-      <details className="bindings-list">
-        <summary>Current bindings</summary>
-        <h4>Chord hand</h4>
-        <ul>
-          {config.primary.map((e) => (
-            <li key={e.pattern}>
-              <PatternDots pattern={e.pattern} /> → degree {e.degree}
-              <button className="link" onClick={() => removePrimary(e.pattern)}>
-                remove
-              </button>
+        <ul className="map-list">
+          {DEFAULT_PRIMARY.map((d) => (
+            <li key={d.degree}>
+              <span className="map-label">
+                <strong>{d.degree}</strong> — {d.label}
+              </span>
+              <span className="map-actions">
+                <button
+                  disabled={!primaryPose}
+                  onClick={() =>
+                    primaryPose &&
+                    onChange(bindPrimary(config, primaryPose, d.degree, d.label))
+                  }
+                >
+                  Recapture
+                </button>
+                <button
+                  className="link"
+                  onClick={() =>
+                    onChange(
+                      bindPrimary(config, makeTemplate(d.extended), d.degree, d.label),
+                    )
+                  }
+                >
+                  reset
+                </button>
+              </span>
             </li>
           ))}
         </ul>
-        <h4>Modifier hand</h4>
-        <ul>
-          {config.modifier.map((e) => (
-            <li key={e.pattern}>
-              <PatternDots pattern={e.pattern} /> → {e.label}
-              <button className="link" onClick={() => removeModifier(e.pattern)}>
-                remove
-              </button>
+      </div>
+
+      <div className="map-section">
+        <div className="map-head">
+          <h4>Modifier hand → special chord</h4>
+          <Detected pose={modifierPose} />
+        </div>
+        <ul className="map-list">
+          {DEFAULT_MODIFIER.map((m) => (
+            <li key={modifierId(m.value)}>
+              <span className="map-label">{m.label}</span>
+              <span className="map-actions">
+                <button
+                  disabled={!modifierPose}
+                  onClick={() =>
+                    modifierPose &&
+                    onChange(bindModifier(config, modifierPose, m.value, m.label))
+                  }
+                >
+                  Recapture
+                </button>
+                <button
+                  className="link"
+                  onClick={() =>
+                    onChange(
+                      bindModifier(config, makeTemplate(m.extended), m.value, m.label),
+                    )
+                  }
+                >
+                  reset
+                </button>
+              </span>
             </li>
           ))}
         </ul>
-      </details>
+      </div>
 
       <button className="reset" onClick={() => onChange(resetConfig())}>
-        Reset to defaults
+        Reset all to defaults
       </button>
     </section>
   );

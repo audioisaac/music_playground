@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FingerSignature, HandPose, Handedness, Key, ResolvedChord } from "./types";
+import type { PoseVector, HandPose, Handedness, Key, ResolvedChord } from "./types";
 import { useHandTracking } from "./hooks/useHandTracking";
 import { useSynth } from "./hooks/useSynth";
 import { useRecorder } from "./hooks/useRecorder";
@@ -18,8 +18,8 @@ import { RecorderPanel } from "./components/RecorderPanel";
 const STABLE_FRAMES = 2;
 
 interface LiveSigs {
-  primarySig: FingerSignature | null;
-  modifierSig: FingerSignature | null;
+  primaryPose: PoseVector | null;
+  modifierPose: PoseVector | null;
 }
 interface DisplayState {
   chord: ResolvedChord | null;
@@ -35,7 +35,7 @@ export default function App() {
   const [musicKey, setMusicKey] = useState<Key>({ root: "C", mode: "major" });
   const [config, setConfig] = useState<GestureConfig>(() => loadConfig());
   const [primaryHandedness, setPrimaryHandedness] = useState<Handedness>("Right");
-  const [live, setLive] = useState<LiveSigs>({ primarySig: null, modifierSig: null });
+  const [live, setLive] = useState<LiveSigs>({ primaryPose: null, modifierPose: null });
   const [display, setDisplay] = useState<DisplayState>({
     chord: null,
     primaryLabel: null,
@@ -65,19 +65,19 @@ export default function App() {
 
   const handlePoses = useCallback((poses: HandPose[]) => {
     const primaryHand = primaryHandRef.current;
-    const primaryPose = poses.find((p) => p.handedness === primaryHand) ?? null;
-    const modifierPose = poses.find((p) => p.handedness !== primaryHand) ?? null;
-    const primarySig = primaryPose?.fingers ?? null;
-    const modifierSig = modifierPose?.fingers ?? null;
+    const primaryHandPose = poses.find((p) => p.handedness === primaryHand) ?? null;
+    const modifierHandPose = poses.find((p) => p.handedness !== primaryHand) ?? null;
+    const primaryPose = primaryHandPose?.pose ?? null;
+    const modifierPose = modifierHandPose?.pose ?? null;
 
-    // Throttle the live-signature UI update (used by the calibration panel).
+    // Throttle the live-pose UI update (used by the calibration panel).
     const now = performance.now();
     if (now - lastLiveRef.current > 80) {
       lastLiveRef.current = now;
-      setLive({ primarySig, modifierSig });
+      setLive({ primaryPose, modifierPose });
     }
 
-    const result = resolveChord(keyRef.current, primarySig, modifierSig, configRef.current);
+    const result = resolveChord(keyRef.current, primaryPose, modifierPose, configRef.current);
     const id = chordId(result.chord);
 
     if (id === pendingIdRef.current) {
@@ -158,8 +158,8 @@ export default function App() {
           <GestureMappingPanel
             config={config}
             onChange={handleConfigChange}
-            primarySig={live.primarySig}
-            modifierSig={live.modifierSig}
+            primaryPose={live.primaryPose}
+            modifierPose={live.modifierPose}
           />
           <RecorderPanel recorder={recorder} />
         </div>
@@ -167,9 +167,10 @@ export default function App() {
 
       <footer className="footer">
         <p>
-          Chord hand: number of fingers = scale degree (1–5; bind 6 &amp; 7 in
-          Gesture Mapping). Modifier hand: add sus2 / sus4 / 7th, or force
-          major/minor for borrowed chords. Hold a shape to sustain.
+          Chord hand shapes pick the scale degree (index=I, peace=ii, … shaka=vi,
+          horns=vii°). Modifier hand: add sus2 / sus4 / 7th, or force major/minor
+          for borrowed chords. Hold a shape to sustain; recalibrate any shape to
+          your own hand in Gesture Mapping.
         </p>
       </footer>
     </div>

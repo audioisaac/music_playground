@@ -46,36 +46,23 @@ export type Handedness = "Left" | "Right";
 export type HandRole = "primary" | "modifier";
 
 /**
- * A normalized description of a hand shape: which of the five fingers are
- * extended, ordered [thumb, index, middle, ring, pinky].
+ * A normalized, pose-invariant description of a whole hand shape ("outline"):
+ * a flat [x0,y0,x1,y1,...] vector of the 21 landmarks. See lib/handShape.ts.
  */
-export type FingerSignature = [boolean, boolean, boolean, boolean, boolean];
+export type PoseVector = number[];
 
 export interface HandPose {
   handedness: Handedness;
-  fingers: FingerSignature;
+  /** Normalized whole-hand shape vector, used for gesture matching. */
+  pose: PoseVector;
   /** Raw 21 landmarks (normalized 0..1), kept for the overlay. */
   landmarks: Array<{ x: number; y: number; z: number }>;
-}
-
-/** What a primary-hand binding resolves to. */
-export interface PrimaryBinding {
-  kind: "degree";
-  degree: Degree;
 }
 
 /** What a modifier-hand binding resolves to. */
 export type ModifierBinding =
   | { kind: "extension"; extension: Extension }
   | { kind: "override"; override: "major" | "minor" };
-
-/** A persisted custom mapping: a finger pattern -> a binding. */
-export interface GestureBinding<T> {
-  /** Encoded finger signature, e.g. "10000". */
-  pattern: string;
-  value: T;
-  label: string;
-}
 
 /** The fully resolved chord the engine wants to sound. */
 export interface ResolvedChord {

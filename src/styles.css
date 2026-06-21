@@ -250,6 +250,51 @@ button.link {
 }
 
 /* Mapping panel */
+.map-section {
+  margin-top: 12px;
+}
+.map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.map-head h4 {
+  margin: 6px 0;
+  color: var(--muted);
+}
+.detect {
+  font-size: 0.72rem;
+}
+.detect.on { color: var(--accent-2); }
+.detect.off { color: var(--muted); }
+.map-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.map-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.map-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.map-actions button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+}
+
 .bind-row {
   display: grid;
   grid-template-columns: 1fr auto auto;
