@@ -1,0 +1,110 @@
+// Shared domain types for the gesture chord synth.
+
+/** Pitch-class names we use for roots and notes (sharps spelling). */
+export type NoteName =
+  | "C"
+  | "C#"
+  | "D"
+  | "D#"
+  | "E"
+  | "F"
+  | "F#"
+  | "G"
+  | "G#"
+  | "A"
+  | "A#"
+  | "B";
+
+/** A musical key = tonic + mode. */
+export type Mode = "major" | "minor";
+export interface Key {
+  root: NoteName;
+  mode: Mode;
+}
+
+/** Scale degree selected by the primary hand. 1..7 (Roman numerals I..vii). */
+export type Degree = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/** Triad quality. */
+export type Quality = "major" | "minor" | "diminished" | "augmented";
+
+/**
+ * How the chord quality relates to the key.
+ * - `diatonic`: use the naturally occurring quality for this degree.
+ * - `majorOverride` / `minorOverride`: borrow a chord outside the key
+ *   (e.g. C minor while in C major).
+ */
+export type QualityMode = "diatonic" | "majorOverride" | "minorOverride";
+
+/** Extension / "special chord" contributed by the modifier hand. */
+export type Extension = "none" | "sus2" | "sus4" | "seventh" | "add9";
+
+/** Which physical hand a detection belongs to (as reported by MediaPipe). */
+export type Handedness = "Left" | "Right";
+
+/** Role a hand plays in the instrument. */
+export type HandRole = "primary" | "modifier";
+
+/**
+ * A normalized description of a hand shape: which of the five fingers are
+ * extended, ordered [thumb, index, middle, ring, pinky].
+ */
+export type FingerSignature = [boolean, boolean, boolean, boolean, boolean];
+
+export interface HandPose {
+  handedness: Handedness;
+  fingers: FingerSignature;
+  /** Raw 21 landmarks (normalized 0..1), kept for the overlay. */
+  landmarks: Array<{ x: number; y: number; z: number }>;
+}
+
+/** What a primary-hand binding resolves to. */
+export interface PrimaryBinding {
+  kind: "degree";
+  degree: Degree;
+}
+
+/** What a modifier-hand binding resolves to. */
+export type ModifierBinding =
+  | { kind: "extension"; extension: Extension }
+  | { kind: "override"; override: "major" | "minor" };
+
+/** A persisted custom mapping: a finger pattern -> a binding. */
+export interface GestureBinding<T> {
+  /** Encoded finger signature, e.g. "10000". */
+  pattern: string;
+  value: T;
+  label: string;
+}
+
+/** The fully resolved chord the engine wants to sound. */
+export interface ResolvedChord {
+  key: Key;
+  degree: Degree;
+  qualityMode: QualityMode;
+  extension: Extension;
+  /** Final triad/extended quality after override is applied. */
+  quality: Quality;
+  /** Tone.js note names, e.g. ["C4","E4","G4"]. */
+  notes: string[];
+  /** Human label, e.g. "Cmaj7" or "Dsus4". */
+  name: string;
+}
+
+/** One entry in a recorded session timeline. */
+export interface ChordEvent {
+  /** Milliseconds since recording start. */
+  t: number;
+  action: "on" | "off";
+  chord?: ResolvedChord;
+}
+
+/** A saved recording: audio + replayable event timeline. */
+export interface RecordedSession {
+  id: string;
+  createdAt: number;
+  durationMs: number;
+  /** Object URL is recreated on load; the blob is what we persist. */
+  audioBlob?: Blob;
+  timeline: ChordEvent[];
+}
