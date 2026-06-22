@@ -3,6 +3,7 @@
 
 import type { ChordEvent, RecordedSession, SoundSettings } from "../types";
 import { DEFAULT_CONFIG, GestureConfig } from "./gestureMap";
+import { DEFAULT_MOTION } from "./expression";
 
 const CONFIG_KEY = "gcs.gestureConfig.v2";
 const SESSIONS_KEY = "gcs.sessions.v1";
@@ -12,13 +13,19 @@ export const DEFAULT_SETTINGS: SoundSettings = {
   source: "synth",
   sustainMode: "hand",
   sensitivity: 0.5,
+  motion: DEFAULT_MOTION,
 };
 
 export function loadSettings(): SoundSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<SoundSettings>) };
+    const parsed = JSON.parse(raw) as Partial<SoundSettings>;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      motion: { ...DEFAULT_MOTION, ...(parsed.motion ?? {}) },
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }

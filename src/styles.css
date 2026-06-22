@@ -268,6 +268,36 @@ button.link {
   flex: 1;
   accent-color: var(--accent);
 }
+.setting-row select {
+  flex: 1;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  max-width: 100%;
+}
+
+/* Motion panel */
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.axis-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  flex: 1;
+}
+.axis-meter {
+  width: 90px;
+  flex: none;
+  margin: 0;
+}
 .seg {
   display: flex;
   flex: 1;

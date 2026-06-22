@@ -60,6 +60,11 @@ export interface SoundSettings {
   sustainMode: SustainMode;
   /** 0..1; higher = the voice gate triggers on quieter singing. */
   sensitivity: number;
+  /** Selected audio devices (deviceId); undefined = system default. */
+  inputDeviceId?: string;
+  outputDeviceId?: string;
+  /** MiMU-style motion-to-sound mapping (see lib/expression.ts MotionConfig). */
+  motion: import("./lib/expression").MotionConfig;
 }
 
 /**

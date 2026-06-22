@@ -40,6 +40,39 @@ export function handOrientation(landmarks: Pt[]): Orientation {
 }
 
 /**
+ * Continuous motion features for expressive control, read from the RAW
+ * landmarks (before normalization). Because shape recognition is invariant to
+ * position/size/rotation, these can drive expression without changing the chord:
+ *  - x, y: hand position in frame, 0..1 (y inverted so raising the hand → 1)
+ *  - size: palm length |wrist→middle-MCP| (distance-to-camera proxy), ~0..1
+ *  - roll: hand tilt, −1 (tilted left) .. +1 (right), 0 = pointing straight up
+ */
+export interface HandMotion {
+  x: number;
+  y: number;
+  size: number;
+  roll: number;
+}
+
+export function handMotion(landmarks: Pt[]): HandMotion {
+  const wrist = landmarks[WRIST];
+  const mid = landmarks[MIDDLE_MCP];
+  const vx = mid.x - wrist.x;
+  const vy = mid.y - wrist.y;
+  const len = Math.hypot(vx, vy);
+  // Signed angle from vertical-up, mapped to −1..+1 over ±90°.
+  const roll = len < EPS ? 0 : Math.max(-1, Math.min(1, Math.atan2(vx, -vy) / (Math.PI / 2)));
+  // Palm length in normalized image units is roughly 0.1 (far) .. 0.45 (near).
+  const size = Math.max(0, Math.min(1, (len - 0.1) / 0.35));
+  return {
+    x: Math.max(0, Math.min(1, wrist.x)),
+    y: Math.max(0, Math.min(1, 1 - wrist.y)),
+    size,
+    roll,
+  };
+}
+
+/**
  * Normalize a hand into a translation/scale/rotation/chirality-invariant
  * vector (the "outline"):
  *  1. translate so the wrist is the origin,

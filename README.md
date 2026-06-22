@@ -39,8 +39,16 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
     leaves/changes. A clenched fist = silence.
   - **While singing** — the chord only sounds while mic input is detected
     (voice-activated gate, with a sensitivity slider).
-- **Record** — capture the master output (synth *or* vocals) to a downloadable
-  audio file **and** a replayable timeline of chord events. Replay any session in-app.
+- **Motion control** (MiMU-style expression) — hold a chord shape and *move* the
+  chord hand to shape the sound, without changing the chord (recognition ignores
+  position/size/rotation, so those drive expression instead): hand **height →
+  volume**, **distance → brightness** (low-pass filter), **tilt → pitch bend**,
+  **left/right → reverb**. Toggle the whole thing and each axis in the Motion panel.
+- **Audio devices** — pick your **input** (mic) and **output** (speaker/earphones)
+  in the Sound panel. Output selection needs a Chromium browser (`setSinkId`).
+- **Record** — capture the post-FX master output (synth *or* vocals, including
+  motion expression) to a downloadable audio file **and** a replayable timeline of
+  chord events. Replay any session in-app.
 
 > 🎧 In vocal or voice-gated modes, use headphones — speaker output can re-enter
 > the mic and feed back. The mic is pre-warmed at **Start** (so vocals turn on

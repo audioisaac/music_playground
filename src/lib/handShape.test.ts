@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handOrientation, normalizePose, poseDistance, Pt } from "./handShape";
+import { handMotion, handOrientation, normalizePose, poseDistance, Pt } from "./handShape";
 
 // A deterministic, distinct set of 21 landmarks (geometry need not be a real
 // hand for invariance tests — only that points differ and palm length > 0).
@@ -65,6 +65,40 @@ describe("handOrientation", () => {
   it("classifies a horizontal hand as 'side'", () => {
     expect(handOrientation(oriented(0.3, 0))).toBe("side");
     expect(handOrientation(oriented(-0.3, 0))).toBe("side");
+  });
+});
+
+describe("handMotion", () => {
+  // Only wrist (0) and middle-MCP (9) matter; fill the rest arbitrarily.
+  const hand = (wrist: Pt, mid: Pt): Pt[] => {
+    const pts: Pt[] = Array.from({ length: 21 }, () => ({ ...wrist }));
+    pts[0] = wrist;
+    pts[9] = mid;
+    return pts;
+  };
+
+  it("reports a high y when the hand is near the top of the frame", () => {
+    // image y grows downward, so small wrist.y = high in frame -> y near 1.
+    const m = handMotion(hand({ x: 0.5, y: 0.1 }, { x: 0.5, y: 0.0 }));
+    expect(m.y).toBeGreaterThan(0.8);
+  });
+
+  it("gives opposite roll signs for left vs right tilt", () => {
+    const left = handMotion(hand({ x: 0.5, y: 0.5 }, { x: 0.3, y: 0.3 }));
+    const right = handMotion(hand({ x: 0.5, y: 0.5 }, { x: 0.7, y: 0.3 }));
+    expect(left.roll).toBeLessThan(0);
+    expect(right.roll).toBeGreaterThan(0);
+  });
+
+  it("reports ~0 roll when pointing straight up", () => {
+    const m = handMotion(hand({ x: 0.5, y: 0.6 }, { x: 0.5, y: 0.3 }));
+    expect(Math.abs(m.roll)).toBeLessThan(0.05);
+  });
+
+  it("grows size as the palm gets larger (closer)", () => {
+    const small = handMotion(hand({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.42 }));
+    const large = handMotion(hand({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.1 }));
+    expect(large.size).toBeGreaterThan(small.size);
   });
 });
 

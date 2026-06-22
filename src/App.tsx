@@ -11,8 +11,11 @@ import type {
 import { useHandTracking } from "./hooks/useHandTracking";
 import { useInstrument } from "./hooks/useInstrument";
 import { useRecorder } from "./hooks/useRecorder";
+import { useDevices } from "./hooks/useDevices";
 import { chordId, resolveChord } from "./lib/chordEngine";
 import { GestureConfig } from "./lib/gestureMap";
+import { handMotion, type HandMotion } from "./lib/handShape";
+import { mapMotionToExpression, NEUTRAL_EXPRESSION } from "./lib/expression";
 import { loadConfig, loadSettings, saveConfig, saveSettings } from "./lib/storage";
 import { StatusBar } from "./components/StatusBar";
 import { CameraView } from "./components/CameraView";
@@ -21,6 +24,7 @@ import { ChordDisplay } from "./components/ChordDisplay";
 import { GestureMappingPanel } from "./components/GestureMappingPanel";
 import { RecorderPanel } from "./components/RecorderPanel";
 import { SoundSettings } from "./components/SoundSettings";
+import { MotionPanel } from "./components/MotionPanel";
 
 // How many consecutive frames a gesture must hold before it commits.
 // 1 = commit immediately for the snappiest response (shape matching is stable
@@ -66,9 +70,11 @@ export default function App() {
     modifierLabel: null,
   });
   const [audioUi, setAudioUi] = useState({ inputLevel: 0, voiceActive: false });
+  const [liveMotion, setLiveMotion] = useState<HandMotion | null>(null);
 
   const instrument = useInstrument();
   const recorder = useRecorder(instrument);
+  const devices = useDevices(started);
 
   // Mutable mirrors so the per-frame callback can stay identity-stable.
   const keyRef = useRef(musicKey);
@@ -92,6 +98,7 @@ export default function App() {
   const lastPlayKeyRef = useRef("silence");
   const lastAboveRef = useRef(0);
   const lastLiveRef = useRef(0);
+  const expressionAppliedRef = useRef(false);
 
   const handlePoses = useCallback((poses: HandPose[]) => {
     const primaryHand = primaryHandRef.current;
@@ -151,10 +158,23 @@ export default function App() {
       recorderRef.current.logEvent(gate && chord ? "on" : "off", gate ? chord : null);
     }
 
-    // 4. Throttled UI updates (calibration poses + input meter).
+    // 4. Motion expression: map the chord hand's position/tilt/distance to the
+    //    live sound. Reset to neutral once when disabled or the hand leaves.
+    let motion: HandMotion | null = null;
+    if (s.motion.enabled && primaryHandPose) {
+      motion = handMotion(primaryHandPose.landmarks);
+      instrumentRef.current.setExpression(mapMotionToExpression(motion, s.motion));
+      expressionAppliedRef.current = true;
+    } else if (expressionAppliedRef.current) {
+      instrumentRef.current.setExpression(NEUTRAL_EXPRESSION);
+      expressionAppliedRef.current = false;
+    }
+
+    // 5. Throttled UI updates (calibration poses + input meter + motion bars).
     if (now - lastLiveRef.current > 80) {
       lastLiveRef.current = now;
       setLive({ primaryPose, modifierPose, modifierOrientation });
+      setLiveMotion(motion);
       const level = instrumentRef.current.getInputLevel();
       setAudioUi({
         inputLevel: Number.isFinite(level)
@@ -173,11 +193,13 @@ export default function App() {
   });
 
   const handleStart = useCallback(async () => {
+    const s = settingsRef.current;
     await instrument.start();
-    instrument.setSource(settingsRef.current.source);
+    instrument.setSource(s.source);
     // Pre-warm the mic now (overlapping the camera/model load) so vocals turn
     // on instantly later instead of paying ~3s of getUserMedia on first use.
-    instrument.ensureMic();
+    instrument.ensureMic(s.inputDeviceId);
+    if (s.outputDeviceId) instrument.setOutputDevice(s.outputDeviceId).catch(() => {});
     setStarted(true);
   }, [instrument]);
 
@@ -190,6 +212,16 @@ export default function App() {
     setSettings(next);
     saveSettings(next);
   }, []);
+
+  const handleInputDevice = useCallback((deviceId: string) => {
+    handleSettingsChange({ ...settingsRef.current, inputDeviceId: deviceId || undefined });
+    instrumentRef.current.setInputDevice(deviceId);
+  }, [handleSettingsChange]);
+
+  const handleOutputDevice = useCallback((deviceId: string) => {
+    handleSettingsChange({ ...settingsRef.current, outputDeviceId: deviceId || undefined });
+    instrumentRef.current.setOutputDevice(deviceId).catch(() => {});
+  }, [handleSettingsChange]);
 
   // Apply source changes to the audio engine and force the next frame to
   // re-drive the new path with the current chord.
@@ -246,6 +278,15 @@ export default function App() {
             micReady={instrument.micReady}
             inputLevel={audioUi.inputLevel}
             voiceActive={audioUi.voiceActive}
+            devices={devices}
+            outputSelectable={instrument.outputSelectable}
+            onInputDevice={handleInputDevice}
+            onOutputDevice={handleOutputDevice}
+          />
+          <MotionPanel
+            motion={settings.motion}
+            onChange={(m) => handleSettingsChange({ ...settings, motion: m })}
+            live={liveMotion}
           />
           <KeySelector value={musicKey} onChange={setMusicKey} />
           <GestureMappingPanel
