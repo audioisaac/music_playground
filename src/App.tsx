@@ -16,13 +16,7 @@ import { chordId, resolveChord } from "./lib/chordEngine";
 import { GestureConfig } from "./lib/gestureMap";
 import { handMotion, type HandMotion } from "./lib/handShape";
 import { mapMotionToExpression, NEUTRAL_EXPRESSION } from "./lib/expression";
-import {
-  loadConfig,
-  loadSettings,
-  loadVoiceSample,
-  saveConfig,
-  saveSettings,
-} from "./lib/storage";
+import { loadConfig, loadSettings, saveConfig, saveSettings } from "./lib/storage";
 import { StatusBar } from "./components/StatusBar";
 import { CameraView } from "./components/CameraView";
 import { KeySelector } from "./components/KeySelector";
@@ -77,6 +71,11 @@ export default function App() {
   });
   const [audioUi, setAudioUi] = useState({ inputLevel: 0, voiceActive: false });
   const [liveMotion, setLiveMotion] = useState<HandMotion | null>(null);
+  const [vocalLive, setVocalLive] = useState<{
+    sungNote: string | null;
+    harmonyNotes: string[];
+  }>({ sungNote: null, harmonyNotes: [] });
+  const [voiceCheck, setVoiceCheck] = useState(false);
 
   const instrument = useInstrument();
   const recorder = useRecorder(instrument);
@@ -188,6 +187,7 @@ export default function App() {
           : 0,
         voiceActive,
       });
+      setVocalLive(instrumentRef.current.getVocalInfo());
     }
   }, []);
 
@@ -202,16 +202,11 @@ export default function App() {
     const s = settingsRef.current;
     await instrument.start();
     instrument.setSource(s.source);
-    instrument.setVocalMode(s.vocalMode);
     instrument.setHarmoniesOnly(s.harmoniesOnly);
     // Pre-warm the mic now (overlapping the camera/model load) so vocals turn
     // on instantly later instead of paying ~3s of getUserMedia on first use.
     instrument.ensureMic(s.inputDeviceId);
     if (s.outputDeviceId) instrument.setOutputDevice(s.outputDeviceId).catch(() => {});
-    // Re-install a previously recorded voice sample.
-    loadVoiceSample().then((blob) => {
-      if (blob) instrument.loadSample(blob).catch(() => {});
-    });
     setStarted(true);
   }, [instrument]);
 
@@ -242,12 +237,6 @@ export default function App() {
     lastPlayKeyRef.current = "force-rebuild";
   }, [settings.source]);
 
-  // Apply vocal-engine (sampler/live) changes.
-  useEffect(() => {
-    instrumentRef.current.setVocalMode(settings.vocalMode);
-    lastPlayKeyRef.current = "force-rebuild";
-  }, [settings.vocalMode]);
-
   // Apply "harmonies only" (mute dry lead) changes.
   useEffect(() => {
     instrumentRef.current.setHarmoniesOnly(settings.harmoniesOnly);
@@ -260,6 +249,13 @@ export default function App() {
       instrumentRef.current.ensureMic();
     }
   }, [started, settings.source, settings.sustainMode]);
+
+  // Toggle the voice-check monitor (ephemeral — never persisted, so it can't
+  // auto-enable into feedback on reload).
+  const handleVoiceCheck = useCallback((on: boolean) => {
+    setVoiceCheck(on);
+    instrumentRef.current.setVoiceCheck(on);
+  }, []);
 
   // Re-voice the held chord when the key changes mid-play.
   useEffect(() => {
@@ -291,6 +287,8 @@ export default function App() {
             chord={display.chord}
             primaryLabel={display.primaryLabel}
             modifierLabel={display.modifierLabel}
+            sungNote={vocalLive.sungNote}
+            harmonyNotes={vocalLive.harmonyNotes}
           />
         </div>
 
@@ -306,9 +304,8 @@ export default function App() {
             outputSelectable={instrument.outputSelectable}
             onInputDevice={handleInputDevice}
             onOutputDevice={handleOutputDevice}
-            onRecordSample={instrument.recordSample}
-            hasSample={instrument.hasSample}
-            isRecordingSample={instrument.isRecordingSample}
+            voiceCheck={voiceCheck}
+            onVoiceCheck={handleVoiceCheck}
           />
           <MotionPanel
             motion={settings.motion}

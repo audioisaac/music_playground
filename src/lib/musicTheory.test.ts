@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildChord,
   diatonicTriad,
+  midiToNoteName,
   noteToMidi,
   relativeIntervals,
   romanNumeral,
@@ -90,6 +91,21 @@ describe("noteToMidi", () => {
     expect(noteToMidi("A4")).toBe(69);
     expect(noteToMidi("D#5")).toBe(75);
     expect(noteToMidi("C5")).toBe(72);
+  });
+});
+
+describe("midiToNoteName", () => {
+  it("maps MIDI numbers back to note names (C4 = 60)", () => {
+    expect(midiToNoteName(60)).toBe("C4");
+    expect(midiToNoteName(50)).toBe("D3");
+    expect(midiToNoteName(69)).toBe("A4");
+    expect(midiToNoteName(75)).toBe("D#5");
+  });
+  it("round-trips with noteToMidi and rounds fractional input", () => {
+    for (const n of ["C4", "F#3", "A5", "D#2"]) {
+      expect(midiToNoteName(noteToMidi(n))).toBe(n);
+    }
+    expect(midiToNoteName(60.4)).toBe("C4");
   });
 });
 

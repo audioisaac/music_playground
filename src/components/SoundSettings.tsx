@@ -2,7 +2,6 @@ import type {
   SoundSettings as Settings,
   SoundSource,
   SustainMode,
-  VocalMode,
 } from "../types";
 import type { DeviceList } from "../hooks/useDevices";
 
@@ -19,15 +18,10 @@ interface Props {
   outputSelectable: boolean;
   onInputDevice: (deviceId: string) => void;
   onOutputDevice: (deviceId: string) => void;
-  onRecordSample: () => void;
-  hasSample: boolean;
-  isRecordingSample: boolean;
+  /** Voice-check monitor (ephemeral, not persisted): echo my voice transposed. */
+  voiceCheck: boolean;
+  onVoiceCheck: (on: boolean) => void;
 }
-
-const VOCAL_MODES: Array<{ v: VocalMode; label: string }> = [
-  { v: "sampler", label: "Sampler" },
-  { v: "live", label: "Live" },
-];
 
 const SOURCES: Array<{ v: SoundSource; label: string }> = [
   { v: "synth", label: "Synth" },
@@ -53,11 +47,11 @@ export function SoundSettings({
   outputSelectable,
   onInputDevice,
   onOutputDevice,
-  onRecordSample,
-  hasSample,
-  isRecordingSample,
+  voiceCheck,
+  onVoiceCheck,
 }: Props) {
-  const needsMic = settings.source === "vocal" || settings.sustainMode === "voice";
+  const needsMic =
+    settings.source === "vocal" || settings.sustainMode === "voice" || voiceCheck;
 
   return (
     <section className="panel sound-settings">
@@ -120,52 +114,36 @@ export function SoundSettings({
 
       {settings.source === "vocal" && (
         <>
-          <div className="setting-row">
-            <span className="setting-label">Vocal</span>
-            <div className="seg">
-              {VOCAL_MODES.map((m) => (
-                <button
-                  key={m.v}
-                  className={`seg-btn ${settings.vocalMode === m.v ? "active" : ""}`}
-                  onClick={() => onChange({ ...settings, vocalMode: m.v })}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {settings.vocalMode === "sampler" ? (
-            <div className="setting-row">
-              <button
-                className="record"
-                disabled={isRecordingSample}
-                onClick={onRecordSample}
-              >
-                {isRecordingSample ? "● Recording…" : "Record voice sample"}
-              </button>
-              <span className="hint" style={{ margin: 0 }}>
-                {hasSample ? "Sample ready ✓" : "No sample yet — sing an “aah”."}
-              </span>
-            </div>
-          ) : (
-            <>
-              <p className="hint">
-                Your own voice (dry) + WSOLA-shifted harmony notes following the chord.
-              </p>
-              <label className="switch" style={{ marginTop: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={settings.harmoniesOnly}
-                  onChange={(e) =>
-                    onChange({ ...settings, harmoniesOnly: e.target.checked })
-                  }
-                />
-                Harmonies only (mute my dry voice — reduces feedback)
-              </label>
-            </>
-          )}
+          <p className="hint">
+            Your own voice (dry) + a chord-aware SATB harmony chosen in real time
+            and WSOLA-shifted onto your voice.
+          </p>
+          <label className="switch" style={{ marginTop: 6 }}>
+            <input
+              type="checkbox"
+              checked={settings.harmoniesOnly}
+              onChange={(e) =>
+                onChange({ ...settings, harmoniesOnly: e.target.checked })
+              }
+            />
+            Harmonies only (mute my dry voice — reduces feedback)
+          </label>
         </>
+      )}
+
+      <label className="switch" style={{ marginTop: 6 }}>
+        <input
+          type="checkbox"
+          checked={voiceCheck}
+          onChange={(e) => onVoiceCheck(e.target.checked)}
+        />
+        Voice check (monitor) — hear my voice shifted back
+      </label>
+      {voiceCheck && (
+        <p className="hint warn">
+          🎧 Headphones only — sing to hear your voice echoed a 5th up (verifies
+          the mic + pitch shifter). Turn off when done.
+        </p>
       )}
 
       {needsMic && (

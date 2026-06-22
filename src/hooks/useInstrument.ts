@@ -1,16 +1,18 @@
 // The audio engine. Owns a shared master bus and two sound sources:
 //  - a Tone.PolySynth, and
 //  - a live vocal harmonizer: the DRY mic is the lead (so you hear your own
-//    words), with pitch-shifted copies added as quieter harmony notes.
-// The mic is also metered for voice-activity gating. Everything sums into
-// `master` -> limiter -> destination; the recorder taps `master`.
+//    words), with WSOLA-shifted copies added as chord-aware SATB harmony notes
+//    chosen by the real-time harmony decision engine.
+// The mic is also metered for voice-activity gating, and a "voice check" monitor
+// can echo the live mic transposed by a fixed interval. Everything sums into
+// `master` -> limiter -> destination; the recorder taps `fxOut`.
 
 import { useCallback, useRef, useState } from "react";
 import * as Tone from "tone";
-import type { SoundSource, VocalMode } from "../types";
-import { noteToMidi } from "../lib/musicTheory";
+import type { SoundSource } from "../types";
+import { midiToNoteName, noteToMidi } from "../lib/musicTheory";
 import type { Expression } from "../lib/expression";
-import { estimatePitchHz, hzToMidi, hzToMidiPrecise } from "../lib/pitch";
+import { estimatePitchHz, hzToMidiPrecise } from "../lib/pitch";
 import {
   assignVoices,
   contextFromMidis,
@@ -20,43 +22,40 @@ import {
   type SatbAssignment,
   type Voice,
 } from "../lib/harmony/harmonyDecisionEngine";
-import { saveVoiceSample } from "../lib/storage";
 
 const HARMONY_COUNT = 3; // pitch-shifted SATB voices added around the dry lead
-const SAMPLER_VOICES = 4; // simultaneous sampler notes (chord size)
 const VOICE_LEVEL = 1.0; // voice bus gain when gated on
 const DRY_LEVEL = 1.0; // the un-shifted lead voice (your actual words)
 const HARMONY_LEVEL = 0.5; // each harmony note, quieter than the lead
-const SAMPLER_LEVEL = 0.6; // each sampler voice (headroom for the limiter)
-const SAMPLE_SECONDS = 2; // length of the recorded voice sample
+const MONITOR_SEMITONES = 7; // voice-check monitor: echo a perfect 5th up
+const MONITOR_LEVEL = 0.9; // voice-check monitor output level
 
 // Real-time harmony decision (control-rate, main thread — not the audio thread).
 const HARMONY_TICK_MS = 30; // ~33 Hz re-solve cadence
 const PITCH_FFT_SIZE = 2048; // analyser window for the sung-pitch detector
 const RESOLVE_MIN_SEMITONES = 0.5; // jitter guard: skip tiny pitch wiggles
 const PITCH_GLIDE = 0.012; // setTargetAtTime time-constant (~10–30 ms smoothing)
+const VOCAL_INFO_STALE_MS = 200; // read-out clears this long after the last solve
 
 interface Harmony {
   node: AudioWorkletNode;
   gain: Tone.Gain;
 }
-interface SamplerVoice {
-  player: Tone.Player;
-  gain: Tone.Gain;
+
+/** Live read-out for the "Now Playing" panel (sung note + harmony notes). */
+export interface VocalInfo {
+  sungNote: string | null;
+  harmonyNotes: string[];
 }
 
 export interface InstrumentApi {
   start: () => Promise<void>;
   ensureMic: (deviceId?: string) => Promise<void>;
   setSource: (source: SoundSource) => void;
-  /** Choose the vocal engine (sampler vs live harmonizer). */
-  setVocalMode: (mode: VocalMode) => void;
-  /** Live only: mute the dry lead (output harmonies only) to cut feedback. */
+  /** Mute the dry lead (output harmonies only) to cut feedback. */
   setHarmoniesOnly: (only: boolean) => void;
-  /** Record a short voice sample for the sampler (persisted). */
-  recordSample: () => Promise<void>;
-  /** Install a previously-saved voice sample at startup. */
-  loadSample: (blob: Blob) => Promise<void>;
+  /** Voice-check monitor: echo the live mic transposed by a fixed interval. */
+  setVoiceCheck: (on: boolean) => void;
   /** Drive the sound: which notes (or null) and whether the gate is open. */
   update: (notes: string[] | null, gate: boolean) => void;
   /** Apply MiMU-style motion expression (volume / brightness / bend / reverb). */
@@ -69,6 +68,8 @@ export interface InstrumentApi {
   outputSelectable: boolean;
   /** Mic input level in dB (-Infinity if no mic), for voice-activity gating. */
   getInputLevel: () => number;
+  /** Live sung note + harmony notes for the read-out (nulls when not singing). */
+  getVocalInfo: () => VocalInfo;
   /** Post-FX node for the recorder to tap (so expression is recorded). */
   getRecordNode: () => Tone.ToneAudioNode | null;
   /** Always sound notes via the synth (used for in-app replay). */
@@ -76,15 +77,11 @@ export interface InstrumentApi {
   previewRelease: () => void;
   micError: string | null;
   micReady: boolean;
-  hasSample: boolean;
-  isRecordingSample: boolean;
 }
 
 export function useInstrument(): InstrumentApi {
   const [micError, setMicError] = useState<string | null>(null);
   const [micReady, setMicReady] = useState(false);
-  const [hasSample, setHasSample] = useState(false);
-  const [isRecordingSample, setIsRecordingSample] = useState(false);
 
   const masterRef = useRef<Tone.Gain | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
@@ -99,8 +96,9 @@ export function useInstrument(): InstrumentApi {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micPullElRef = useRef<HTMLAudioElement | null>(null);
-  const samplerVoicesRef = useRef<SamplerVoice[]>([]);
-  const baseMidiRef = useRef(60); // pitch of the recorded sample (default C4)
+  // Voice-check monitor: one extra shifter that echoes the live mic, ungated.
+  const monitorNodeRef = useRef<AudioWorkletNode | null>(null);
+  const monitorGainRef = useRef<Tone.Gain | null>(null);
 
   // Live harmony decision engine state (drives the worklet pitch params).
   const harmonyCtxRef = useRef<HarmonyContext | null>(null);
@@ -108,19 +106,21 @@ export function useInstrument(): InstrumentApi {
   const lastSolveMidiRef = useRef<number>(NaN);
   const vocalActiveRef = useRef(false); // gate open AND a chord is set
   const harmonyLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Live read-out (sung note + harmony note names) for the "Now Playing" panel.
+  const liveSungMidiRef = useRef<number | null>(null);
+  const liveHarmonyMidisRef = useRef<number[]>([]);
+  const liveVocalTsRef = useRef(0);
 
   const sourceRef = useRef<SoundSource>("synth");
-  const vocalModeRef = useRef<VocalMode>("sampler");
   const harmoniesOnlyRef = useRef(false);
   const synthKeyRef = useRef("silence");
   const vocalNotesKeyRef = useRef("none");
-  const samplerNotesKeyRef = useRef("none");
 
   // One control-rate tick of the harmony decision engine: detect the sung pitch,
   // solve the SATB assignment, and steer each shifter worklet's `pitch` param to
   // (targetMIDI − sungMIDI) so harmonies land on absolute, chord-aware notes.
   const solveHarmony = useCallback(() => {
-    if (sourceRef.current !== "vocal" || vocalModeRef.current !== "live") return;
+    if (sourceRef.current !== "vocal") return;
     const ctx = harmonyCtxRef.current;
     const an = analyserRef.current;
     const harmonies = harmoniesRef.current;
@@ -147,6 +147,7 @@ export function useInstrument(): InstrumentApi {
     const lead = pickLeadVoice(sung);
     const parts: Voice[] = VOICE_ORDER.filter((v) => v !== lead);
     const now = (Tone.getContext().rawContext as AudioContext).currentTime;
+    const harmonyMidis: number[] = [];
     harmonies.forEach((h, i) => {
       const part = parts[i];
       const target = part ? (assignment[part] as number | undefined) : undefined;
@@ -154,10 +155,16 @@ export function useInstrument(): InstrumentApi {
         const p = h.node.parameters.get("pitch");
         if (p) p.setTargetAtTime(target - sung, now, PITCH_GLIDE); // 10–30 ms glide
         h.gain.gain.rampTo(HARMONY_LEVEL, 0.03);
+        harmonyMidis.push(target);
       } else {
         h.gain.gain.rampTo(0, 0.05);
       }
     });
+
+    // Publish the live read-out (sung note + harmony notes) for the UI.
+    liveSungMidiRef.current = Math.round(sung);
+    liveHarmonyMidisRef.current = harmonyMidis.sort((a, b) => a - b);
+    liveVocalTsRef.current = performance.now();
   }, []);
 
   const start = useCallback(async () => {
@@ -227,6 +234,19 @@ export function useInstrument(): InstrumentApi {
         Tone.connect(node, gain);
         harmonies.push({ node, gain });
       }
+      // Voice-check monitor: one more shifter, routed straight to fxOut (ungated,
+      // bypasses voiceGain) so it echoes the live mic regardless of the chord gate.
+      const monitorGain = new Tone.Gain(0).connect(fxOut);
+      const monitorNode = new AudioWorkletNode(ctx, "soundtouch-shifter", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: 1,
+      });
+      const mp = monitorNode.parameters.get("pitch");
+      if (mp) mp.value = MONITOR_SEMITONES;
+      Tone.connect(monitorNode, monitorGain);
+      monitorNodeRef.current = monitorNode;
+      monitorGainRef.current = monitorGain;
     } catch (e) {
       setMicError(
         `Live harmonizer unavailable (worklet): ${e instanceof Error ? e.message : e}`,
@@ -271,6 +291,9 @@ export function useInstrument(): InstrumentApi {
     if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
     for (const h of harmoniesRef.current) {
       try { src.connect(h.node); } catch { /* skip if worklet node is broken */ }
+    }
+    if (monitorNodeRef.current) {
+      try { src.connect(monitorNodeRef.current); } catch { /* monitor unavailable */ }
     }
     setMicReady(true);
     setMicError(null);
@@ -352,59 +375,18 @@ export function useInstrument(): InstrumentApi {
     voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.005 : 0.03);
   }, []);
 
-  // Sampler: play the recorded voice transposed to each chord note (replicate +
-  // transpose). Looping players give constant sustain; no mic in the output.
-  const applySampler = useCallback((notes: string[] | null, gate: boolean) => {
-    const voices = samplerVoicesRef.current;
-    const key = notes && notes.length ? notes.join(",") : "none";
-    if (key !== samplerNotesKeyRef.current) {
-      samplerNotesKeyRef.current = key;
-      const midis = notes ? notes.map(noteToMidi) : [];
-      const base = baseMidiRef.current;
-      voices.forEach((v, i) => {
-        if (i < midis.length) {
-          v.player.playbackRate = Math.pow(2, (midis[i] - base) / 12);
-          v.gain.gain.rampTo(SAMPLER_LEVEL, 0.02);
-        } else {
-          v.gain.gain.rampTo(0, 0.02);
-        }
-      });
-    }
-    const on = !!(gate && notes && notes.length && voices.length);
-    voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.005 : 0.03);
-  }, []);
-
-  const muteLive = useCallback(() => {
-    dryGainRef.current?.gain.rampTo(0, 0.03);
-    harmoniesRef.current.forEach((h) => h.gain.gain.rampTo(0, 0.03));
-    vocalNotesKeyRef.current = "none";
-    vocalActiveRef.current = false; // halts the harmony decision loop
-    harmonyCtxRef.current = null;
-  }, []);
-
-  const muteSampler = useCallback(() => {
-    samplerVoicesRef.current.forEach((v) => v.gain.gain.rampTo(0, 0.03));
-    samplerNotesKeyRef.current = "none";
-  }, []);
-
   const update = useCallback(
     (notes: string[] | null, gate: boolean) => {
       if (sourceRef.current === "synth") {
         applySynth(notes, gate);
         voiceGainRef.current?.gain.rampTo(0, 0.05);
-      } else if (vocalModeRef.current === "sampler") {
-        applySampler(notes, gate);
-        muteLive();
-        synthRef.current?.releaseAll();
-        synthKeyRef.current = "silence";
       } else {
         applyVocal(notes, gate);
-        muteSampler();
         synthRef.current?.releaseAll();
         synthKeyRef.current = "silence";
       }
     },
-    [applySynth, applyVocal, applySampler, muteLive, muteSampler],
+    [applySynth, applyVocal],
   );
 
   const setSource = useCallback((source: SoundSource) => {
@@ -413,82 +395,29 @@ export function useInstrument(): InstrumentApi {
     if (source === "synth") {
       voiceGainRef.current?.gain.rampTo(0, 0.05);
       vocalNotesKeyRef.current = "none";
+      liveSungMidiRef.current = null;
+      liveHarmonyMidisRef.current = [];
     } else {
       synthRef.current?.releaseAll();
       synthKeyRef.current = "silence";
     }
   }, []);
 
-  const setVocalMode = useCallback(
-    (mode: VocalMode) => {
-      vocalModeRef.current = mode;
-      if (mode === "sampler") muteLive();
-      else muteSampler();
-    },
-    [muteLive, muteSampler],
-  );
-
   const setHarmoniesOnly = useCallback((only: boolean) => {
     harmoniesOnlyRef.current = only;
     vocalNotesKeyRef.current = "none"; // force dry-lead level to re-apply
   }, []);
 
-  // Build (or rebuild) the looping sampler players from a decoded buffer.
-  const buildSampler = useCallback((buf: AudioBuffer) => {
-    const vg = voiceGainRef.current;
-    if (!vg) return;
-    const toneBuf = new Tone.ToneAudioBuffer(buf);
-    if (samplerVoicesRef.current.length === 0) {
-      samplerVoicesRef.current = Array.from({ length: SAMPLER_VOICES }, () => {
-        const gain = new Tone.Gain(0).connect(vg);
-        const player = new Tone.Player({ loop: true, fadeIn: 0.01, fadeOut: 0.01 }).connect(gain);
-        return { player, gain };
-      });
-    }
-    for (const v of samplerVoicesRef.current) {
-      v.player.buffer = toneBuf;
-      try {
-        v.player.stop();
-      } catch {
-        /* not started yet */
-      }
-      v.player.start();
-    }
-  }, []);
-
-  const installSampleBlob = useCallback(
-    async (blob: Blob) => {
-      const arrayBuf = await blob.arrayBuffer();
-      const ctx = Tone.getContext().rawContext as AudioContext;
-      const audioBuf = await ctx.decodeAudioData(arrayBuf);
-      const hz = estimatePitchHz(audioBuf.getChannelData(0), audioBuf.sampleRate);
-      baseMidiRef.current = hz ? hzToMidi(hz) : 60;
-      buildSampler(audioBuf);
-      samplerNotesKeyRef.current = "none";
-      setHasSample(true);
+  // Voice-check monitor: echo the live mic transposed a fixed interval. Opens the
+  // mic on demand; routed to fxOut directly so it sounds regardless of the gate.
+  const setVoiceCheck = useCallback(
+    (on: boolean) => {
+      if (on) ensureMic();
+      const mp = monitorNodeRef.current?.parameters.get("pitch");
+      if (mp) mp.value = MONITOR_SEMITONES;
+      monitorGainRef.current?.gain.rampTo(on ? MONITOR_LEVEL : 0, 0.03);
     },
-    [buildSampler],
-  );
-
-  const recordSample = useCallback(async () => {
-    await ensureMic();
-    const src = micSourceRef.current;
-    if (!src) return;
-    const rec = new Tone.Recorder();
-    Tone.connect(src, rec);
-    setIsRecordingSample(true);
-    rec.start();
-    await new Promise((r) => setTimeout(r, SAMPLE_SECONDS * 1000));
-    const blob = await rec.stop();
-    rec.dispose();
-    setIsRecordingSample(false);
-    await installSampleBlob(blob);
-    await saveVoiceSample(blob);
-  }, [ensureMic, installSampleBlob]);
-
-  const loadSample = useCallback(
-    (blob: Blob) => installSampleBlob(blob),
-    [installSampleBlob],
+    [ensureMic],
   );
 
   const setExpression = useCallback((e: Expression) => {
@@ -504,6 +433,17 @@ export function useInstrument(): InstrumentApi {
     if (!m || !micStreamRef.current) return -Infinity;
     const v = m.getValue();
     return typeof v === "number" ? v : v[0];
+  }, []);
+
+  const getVocalInfo = useCallback((): VocalInfo => {
+    const stale = performance.now() - liveVocalTsRef.current > VOCAL_INFO_STALE_MS;
+    if (sourceRef.current !== "vocal" || stale || liveSungMidiRef.current == null) {
+      return { sungNote: null, harmonyNotes: [] };
+    }
+    return {
+      sungNote: midiToNoteName(liveSungMidiRef.current),
+      harmonyNotes: liveHarmonyMidisRef.current.map(midiToNoteName),
+    };
   }, []);
 
   const getRecordNode = useCallback(() => fxOutRef.current, []);
@@ -523,22 +463,19 @@ export function useInstrument(): InstrumentApi {
     start,
     ensureMic,
     setSource,
-    setVocalMode,
     setHarmoniesOnly,
-    recordSample,
-    loadSample,
+    setVoiceCheck,
     update,
     setExpression,
     setInputDevice,
     setOutputDevice,
     outputSelectable,
     getInputLevel,
+    getVocalInfo,
     getRecordNode,
     previewAttack,
     previewRelease,
     micError,
     micReady,
-    hasSample,
-    isRecordingSample,
   };
 }

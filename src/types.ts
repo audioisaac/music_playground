@@ -54,16 +54,11 @@ export type SoundSource = "synth" | "vocal";
 /** What keeps a chord sounding. */
 export type SustainMode = "hand" | "voice";
 
-/** How "My vocals" produces sound: a recorded sampler vs the live harmonizer. */
-export type VocalMode = "sampler" | "live";
-
 /** Persisted audio preferences. */
 export interface SoundSettings {
   source: SoundSource;
   sustainMode: SustainMode;
-  /** Vocal engine when source = "vocal". */
-  vocalMode: VocalMode;
-  /** Live vocal mode: output harmonies only (mute dry lead) to reduce feedback. */
+  /** Vocal mode: output harmonies only (mute dry lead) to reduce feedback. */
   harmoniesOnly: boolean;
   /** 0..1; higher = the voice gate triggers on quieter singing. */
   sensitivity: number;

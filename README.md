@@ -28,24 +28,24 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   the modifier hand held sideways, since up forces major.)
 - **Sound source** (Sound panel):
   - **Synth** — a Tone.js polyphonic synth plays the chord.
-  - **My vocals** — two engines (toggle in the Sound panel):
-    - **Sampler** (default) — record a short "aah" once; the app plays *that
-      recording* transposed to each chord note, looped for sustain. Reliably
-      replicates your voice and transposes it to the chord; instant, constant
-      volume, no feedback. The sample's base pitch is auto-detected (autocorrelation)
-      so chords land at the key's pitches, and it persists across reloads.
-    - **Live** — a real-time harmonizer driven by a **harmony decision engine**.
-      Your **dry voice is the lead** (you hear your actual words); a small
-      constraint solver (`src/lib/harmony/harmonyDecisionEngine.ts`) detects your
-      sung pitch (autocorrelation) and, instead of fixed intervals, **scores
-      candidate notes** (chord-fit, voice-leading, SATB vocal ranges, dissonance,
-      spacing) to assign **SATB harmony voices** that react to the chord and keep
-      smooth voice leading frame to frame — a choir reacting to a singer, not a
-      fixed +3/+7/+12 stack. The solver runs on the main thread at ~33 Hz (never on
-      the audio thread) and steers the **WSOLA pitch-shifter (soundtouchjs)
-      AudioWorklet** (`public/soundtouch-worklet.js`) to absolute targets via short
-      glides. Real-time shifting still has ~tens-of-ms latency. A **Harmonies only**
-      toggle mutes the dry lead to reduce mic feedback. Use headphones.
+  - **My vocals** — a real-time harmonizer driven by a **harmony decision engine**.
+    Your **dry voice is the lead** (you hear your actual words); a small constraint
+    solver (`src/lib/harmony/harmonyDecisionEngine.ts`) detects your sung pitch
+    (autocorrelation) and, instead of fixed intervals, **scores candidate notes**
+    (chord-fit, voice-leading, SATB vocal ranges, dissonance, spacing) to assign
+    **SATB harmony voices** that react to the chord and keep smooth voice leading
+    frame to frame — a choir reacting to a singer, not a fixed +3/+7/+12 stack. The
+    solver runs on the main thread at ~33 Hz (never on the audio thread) and steers
+    the **WSOLA pitch-shifter (soundtouchjs) AudioWorklet**
+    (`public/soundtouch-worklet.js`) to absolute targets via short glides. Real-time
+    shifting still has ~tens-of-ms latency. A **Harmonies only** toggle mutes the dry
+    lead to reduce mic feedback. The **Now Playing** panel shows the note you're
+    singing and the live harmony notes (notes outside the current chord are
+    highlighted). Use headphones.
+  - **Voice check (monitor)** — a Sound-panel toggle that echoes your live voice
+    transposed by a fixed interval (a 5th up) straight back, to verify the mic +
+    pitch shifter + latency are working. Headphones only (it routes the mic to the
+    speakers). It is not persisted, so it never auto-enables into feedback on reload.
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.

@@ -78,6 +78,17 @@ export function relativeIntervals(notes: string[]): number[] {
   return midis.map((m) => m - low);
 }
 
+/**
+ * Inverse of `noteToMidi`: a MIDI number to a Tone-style note name (C4 = 60),
+ * spelled with sharps. Used to display the sung pitch and live harmony notes.
+ */
+export function midiToNoteName(midi: number): string {
+  const m = Math.round(midi);
+  const pc = ((m % 12) + 12) % 12;
+  const octave = Math.floor(m / 12) - 1;
+  return `${NOTE_NAMES[pc]}${octave}`;
+}
+
 /** Roman numeral label for a degree given its quality. */
 export function romanNumeral(degree: Degree, quality: Quality): string {
   const base = ["I", "II", "III", "IV", "V", "VI", "VII"][degree - 1];
