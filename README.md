@@ -34,12 +34,18 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
       replicates your voice and transposes it to the chord; instant, constant
       volume, no feedback. The sample's base pitch is auto-detected (autocorrelation)
       so chords land at the key's pitches, and it persists across reloads.
-    - **Live** — a real-time harmonizer: your **dry voice is the lead** (you hear
-      your actual words) with quieter **harmony notes** on top, following the chord.
-      Harmonies use a **WSOLA pitch-shifter (soundtouchjs) in an AudioWorklet**
-      (`public/soundtouch-worklet.js`) — much cleaner than a granular shifter,
-      though real-time pitch-shifting still has ~tens-of-ms latency. A **Harmonies
-      only** toggle mutes the dry lead to reduce mic feedback. Use headphones.
+    - **Live** — a real-time harmonizer driven by a **harmony decision engine**.
+      Your **dry voice is the lead** (you hear your actual words); a small
+      constraint solver (`src/lib/harmony/harmonyDecisionEngine.ts`) detects your
+      sung pitch (autocorrelation) and, instead of fixed intervals, **scores
+      candidate notes** (chord-fit, voice-leading, SATB vocal ranges, dissonance,
+      spacing) to assign **SATB harmony voices** that react to the chord and keep
+      smooth voice leading frame to frame — a choir reacting to a singer, not a
+      fixed +3/+7/+12 stack. The solver runs on the main thread at ~33 Hz (never on
+      the audio thread) and steers the **WSOLA pitch-shifter (soundtouchjs)
+      AudioWorklet** (`public/soundtouch-worklet.js`) to absolute targets via short
+      glides. Real-time shifting still has ~tens-of-ms latency. A **Harmonies only**
+      toggle mutes the dry lead to reduce mic feedback. Use headphones.
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.

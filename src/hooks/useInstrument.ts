@@ -8,18 +8,33 @@
 import { useCallback, useRef, useState } from "react";
 import * as Tone from "tone";
 import type { SoundSource, VocalMode } from "../types";
-import { noteToMidi, relativeIntervals } from "../lib/musicTheory";
+import { noteToMidi } from "../lib/musicTheory";
 import type { Expression } from "../lib/expression";
-import { estimatePitchHz, hzToMidi } from "../lib/pitch";
+import { estimatePitchHz, hzToMidi, hzToMidiPrecise } from "../lib/pitch";
+import {
+  assignVoices,
+  contextFromMidis,
+  pickLeadVoice,
+  VOICE_ORDER,
+  type HarmonyContext,
+  type SatbAssignment,
+  type Voice,
+} from "../lib/harmony/harmonyDecisionEngine";
 import { saveVoiceSample } from "../lib/storage";
 
-const HARMONY_COUNT = 3; // pitch-shifted notes added above the dry lead
+const HARMONY_COUNT = 3; // pitch-shifted SATB voices added around the dry lead
 const SAMPLER_VOICES = 4; // simultaneous sampler notes (chord size)
 const VOICE_LEVEL = 1.0; // voice bus gain when gated on
 const DRY_LEVEL = 1.0; // the un-shifted lead voice (your actual words)
 const HARMONY_LEVEL = 0.5; // each harmony note, quieter than the lead
 const SAMPLER_LEVEL = 0.6; // each sampler voice (headroom for the limiter)
 const SAMPLE_SECONDS = 2; // length of the recorded voice sample
+
+// Real-time harmony decision (control-rate, main thread — not the audio thread).
+const HARMONY_TICK_MS = 30; // ~33 Hz re-solve cadence
+const PITCH_FFT_SIZE = 2048; // analyser window for the sung-pitch detector
+const RESOLVE_MIN_SEMITONES = 0.5; // jitter guard: skip tiny pitch wiggles
+const PITCH_GLIDE = 0.012; // setTargetAtTime time-constant (~10–30 ms smoothing)
 
 interface Harmony {
   node: AudioWorkletNode;
@@ -80,11 +95,19 @@ export function useInstrument(): InstrumentApi {
   const dryGainRef = useRef<Tone.Gain | null>(null);
   const harmoniesRef = useRef<Harmony[]>([]);
   const meterRef = useRef<Tone.Meter | null>(null);
+  const analyserRef = useRef<Tone.Analyser | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micPullElRef = useRef<HTMLAudioElement | null>(null);
   const samplerVoicesRef = useRef<SamplerVoice[]>([]);
   const baseMidiRef = useRef(60); // pitch of the recorded sample (default C4)
+
+  // Live harmony decision engine state (drives the worklet pitch params).
+  const harmonyCtxRef = useRef<HarmonyContext | null>(null);
+  const prevAssignRef = useRef<SatbAssignment | null>(null);
+  const lastSolveMidiRef = useRef<number>(NaN);
+  const vocalActiveRef = useRef(false); // gate open AND a chord is set
+  const harmonyLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const sourceRef = useRef<SoundSource>("synth");
   const vocalModeRef = useRef<VocalMode>("sampler");
@@ -92,6 +115,50 @@ export function useInstrument(): InstrumentApi {
   const synthKeyRef = useRef("silence");
   const vocalNotesKeyRef = useRef("none");
   const samplerNotesKeyRef = useRef("none");
+
+  // One control-rate tick of the harmony decision engine: detect the sung pitch,
+  // solve the SATB assignment, and steer each shifter worklet's `pitch` param to
+  // (targetMIDI − sungMIDI) so harmonies land on absolute, chord-aware notes.
+  const solveHarmony = useCallback(() => {
+    if (sourceRef.current !== "vocal" || vocalModeRef.current !== "live") return;
+    const ctx = harmonyCtxRef.current;
+    const an = analyserRef.current;
+    const harmonies = harmoniesRef.current;
+    if (!ctx || !an || !vocalActiveRef.current || harmonies.length === 0) return;
+
+    const buf = an.getValue() as Float32Array;
+    const sr = Tone.getContext().sampleRate;
+    const hz = estimatePitchHz(buf, sr);
+    if (!hz) return; // unvoiced: hold the last assignment (dry lead stays audible)
+
+    const sung = hzToMidiPrecise(hz);
+    if (
+      Number.isFinite(lastSolveMidiRef.current) &&
+      Math.abs(sung - lastSolveMidiRef.current) < RESOLVE_MIN_SEMITONES
+    ) {
+      return; // jitter guard — ignore micro pitch wobble
+    }
+    lastSolveMidiRef.current = sung;
+
+    const assignment = assignVoices(ctx, sung, prevAssignRef.current, HARMONY_COUNT);
+    prevAssignRef.current = assignment;
+
+    // The melody's own SATB part is the dry lead; the shifters render the others.
+    const lead = pickLeadVoice(sung);
+    const parts: Voice[] = VOICE_ORDER.filter((v) => v !== lead);
+    const now = (Tone.getContext().rawContext as AudioContext).currentTime;
+    harmonies.forEach((h, i) => {
+      const part = parts[i];
+      const target = part ? (assignment[part] as number | undefined) : undefined;
+      if (part && target != null) {
+        const p = h.node.parameters.get("pitch");
+        if (p) p.setTargetAtTime(target - sung, now, PITCH_GLIDE); // 10–30 ms glide
+        h.gain.gain.rampTo(HARMONY_LEVEL, 0.03);
+      } else {
+        h.gain.gain.rampTo(0, 0.05);
+      }
+    });
+  }, []);
 
   const start = useCallback(async () => {
     await Tone.start();
@@ -141,6 +208,9 @@ export function useInstrument(): InstrumentApi {
     // Meter must be created before harmonies so mic metering works even if the
     // worklet fails to load (harmony nodes would throw, but meter is already set).
     meterRef.current = new Tone.Meter();
+    // Waveform analyser: a parallel tap used by the harmony engine to detect the
+    // sung pitch in real time (does NOT touch the pitch-shift worklet/DSP).
+    analyserRef.current = new Tone.Analyser("waveform", PITCH_FFT_SIZE);
 
     // Harmony voices: WSOLA pitch-shifter worklet per non-root chord interval.
     // Wrapped in try/catch: if the worklet isn't registered (load failure above),
@@ -163,7 +233,13 @@ export function useInstrument(): InstrumentApi {
       );
     }
     harmoniesRef.current = harmonies;
-  }, []);
+
+    // Control-rate harmony loop (~33 Hz). Runs on the main thread — it only
+    // writes target values to the worklet `pitch` params, never blocking audio.
+    if (!harmonyLoopRef.current) {
+      harmonyLoopRef.current = setInterval(solveHarmony, HARMONY_TICK_MS);
+    }
+  }, [solveHarmony]);
 
   // Raw getUserMedia (auto-gain off for low latency / no volume drift), wired
   // into the graph. Pre-warmed at Start and kept open so vocals turn on instantly.
@@ -191,6 +267,7 @@ export function useInstrument(): InstrumentApi {
     micPullElRef.current.srcObject = stream;
     micPullElRef.current.play().catch(() => {});
     if (meterRef.current) Tone.connect(src, meterRef.current);
+    if (analyserRef.current) Tone.connect(src, analyserRef.current);
     if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
     for (const h of harmoniesRef.current) {
       try { src.connect(h.node); } catch { /* skip if worklet node is broken */ }
@@ -256,21 +333,21 @@ export function useInstrument(): InstrumentApi {
     const key = notes && notes.length ? notes.join(",") : "none";
     if (key !== vocalNotesKeyRef.current) {
       vocalNotesKeyRef.current = key;
-      // intervals[0] is the root (0) -> the dry lead; the rest are harmonies.
-      const harmonies = notes ? relativeIntervals(notes).slice(1) : [];
+      if (notes && notes.length) {
+        // Hand the new chord to the decision engine; force an immediate re-solve.
+        // Per-note pitches are chosen by solveHarmony, not fixed intervals.
+        harmonyCtxRef.current = contextFromMidis(notes.map(noteToMidi));
+        lastSolveMidiRef.current = NaN;
+      } else {
+        harmonyCtxRef.current = null;
+        prevAssignRef.current = null;
+        harmoniesRef.current.forEach((h) => h.gain.gain.rampTo(0, 0.05));
+      }
       const dryTarget = notes && notes.length && !harmoniesOnlyRef.current ? DRY_LEVEL : 0;
       dryGainRef.current?.gain.rampTo(dryTarget, 0.02);
-      harmoniesRef.current.forEach((h, i) => {
-        if (i < harmonies.length) {
-          const p = h.node.parameters.get("pitch");
-          if (p) p.value = harmonies[i];
-          h.gain.gain.rampTo(HARMONY_LEVEL, 0.02);
-        } else {
-          h.gain.gain.rampTo(0, 0.02);
-        }
-      });
     }
     const on = !!(gate && notes && notes.length);
+    vocalActiveRef.current = on; // tells the harmony loop whether to run
     // Short ramps gate the bus without swelling.
     voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.005 : 0.03);
   }, []);
@@ -301,6 +378,8 @@ export function useInstrument(): InstrumentApi {
     dryGainRef.current?.gain.rampTo(0, 0.03);
     harmoniesRef.current.forEach((h) => h.gain.gain.rampTo(0, 0.03));
     vocalNotesKeyRef.current = "none";
+    vocalActiveRef.current = false; // halts the harmony decision loop
+    harmonyCtxRef.current = null;
   }, []);
 
   const muteSampler = useCallback(() => {

@@ -61,3 +61,12 @@ function parabolicPeak(samples: Float32Array, lag: number, n: number): number {
 export function hzToMidi(hz: number): number {
   return Math.round(69 + 12 * Math.log2(hz / 440));
 }
+
+/**
+ * Fractional MIDI note for a frequency (un-rounded). The live harmonizer needs
+ * the exact sung pitch so a harmony shift `target − sung` lands the harmony on
+ * the integer target even when the singer is slightly flat/sharp.
+ */
+export function hzToMidiPrecise(hz: number): number {
+  return 69 + 12 * Math.log2(hz / 440);
+}
