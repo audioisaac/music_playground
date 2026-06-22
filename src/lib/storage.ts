@@ -12,9 +12,12 @@ const SETTINGS_KEY = "gcs.soundSettings.v1";
 export const DEFAULT_SETTINGS: SoundSettings = {
   source: "synth",
   sustainMode: "hand",
+  vocalMode: "sampler",
   sensitivity: 0.5,
   motion: DEFAULT_MOTION,
 };
+
+const SAMPLE_KEY = "gcs.voiceSample.v1";
 
 export function loadSettings(): SoundSettings {
   try {
@@ -62,6 +65,25 @@ interface StoredSession {
   durationMs: number;
   audioDataUrl?: string;
   timeline: ChordEvent[];
+}
+
+/** Persist / load the recorded voice sample (for the vocal sampler). */
+export async function saveVoiceSample(blob: Blob): Promise<void> {
+  try {
+    localStorage.setItem(SAMPLE_KEY, await blobToDataUrl(blob));
+  } catch (err) {
+    console.warn("Could not persist voice sample (storage quota?)", err);
+  }
+}
+
+export async function loadVoiceSample(): Promise<Blob | null> {
+  const url = localStorage.getItem(SAMPLE_KEY);
+  if (!url) return null;
+  try {
+    return await dataUrlToBlob(url);
+  } catch {
+    return null;
+  }
 }
 
 async function blobToDataUrl(blob: Blob): Promise<string> {

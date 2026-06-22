@@ -1,4 +1,9 @@
-import type { SoundSettings as Settings, SoundSource, SustainMode } from "../types";
+import type {
+  SoundSettings as Settings,
+  SoundSource,
+  SustainMode,
+  VocalMode,
+} from "../types";
 import type { DeviceList } from "../hooks/useDevices";
 
 interface Props {
@@ -14,7 +19,15 @@ interface Props {
   outputSelectable: boolean;
   onInputDevice: (deviceId: string) => void;
   onOutputDevice: (deviceId: string) => void;
+  onRecordSample: () => void;
+  hasSample: boolean;
+  isRecordingSample: boolean;
 }
+
+const VOCAL_MODES: Array<{ v: VocalMode; label: string }> = [
+  { v: "sampler", label: "Sampler" },
+  { v: "live", label: "Live" },
+];
 
 const SOURCES: Array<{ v: SoundSource; label: string }> = [
   { v: "synth", label: "Synth" },
@@ -40,6 +53,9 @@ export function SoundSettings({
   outputSelectable,
   onInputDevice,
   onOutputDevice,
+  onRecordSample,
+  hasSample,
+  isRecordingSample,
 }: Props) {
   const needsMic = settings.source === "vocal" || settings.sustainMode === "voice";
 
@@ -103,9 +119,41 @@ export function SoundSettings({
       )}
 
       {settings.source === "vocal" && (
-        <p className="hint">
-          You'll hear your own voice (dry) plus harmony notes following the chord.
-        </p>
+        <>
+          <div className="setting-row">
+            <span className="setting-label">Vocal</span>
+            <div className="seg">
+              {VOCAL_MODES.map((m) => (
+                <button
+                  key={m.v}
+                  className={`seg-btn ${settings.vocalMode === m.v ? "active" : ""}`}
+                  onClick={() => onChange({ ...settings, vocalMode: m.v })}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {settings.vocalMode === "sampler" ? (
+            <div className="setting-row">
+              <button
+                className="record"
+                disabled={isRecordingSample}
+                onClick={onRecordSample}
+              >
+                {isRecordingSample ? "● Recording…" : "Record voice sample"}
+              </button>
+              <span className="hint" style={{ margin: 0 }}>
+                {hasSample ? "Sample ready ✓" : "No sample yet — sing an “aah”."}
+              </span>
+            </div>
+          ) : (
+            <p className="hint">
+              You'll hear your own voice (dry) plus harmony notes following the chord.
+            </p>
+          )}
+        </>
       )}
 
       {needsMic && (

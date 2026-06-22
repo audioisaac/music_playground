@@ -7,17 +7,26 @@
 
 import { useCallback, useRef, useState } from "react";
 import * as Tone from "tone";
-import type { SoundSource } from "../types";
-import { relativeIntervals } from "../lib/musicTheory";
+import type { SoundSource, VocalMode } from "../types";
+import { noteToMidi, relativeIntervals } from "../lib/musicTheory";
 import type { Expression } from "../lib/expression";
+import { estimatePitchHz, hzToMidi } from "../lib/pitch";
+import { saveVoiceSample } from "../lib/storage";
 
 const HARMONY_COUNT = 3; // pitch-shifted notes added above the dry lead
+const SAMPLER_VOICES = 4; // simultaneous sampler notes (chord size)
 const VOICE_LEVEL = 1.0; // voice bus gain when gated on
 const DRY_LEVEL = 1.0; // the un-shifted lead voice (your actual words)
 const HARMONY_LEVEL = 0.5; // each harmony note, quieter than the lead
+const SAMPLER_LEVEL = 0.6; // each sampler voice (headroom for the limiter)
+const SAMPLE_SECONDS = 2; // length of the recorded voice sample
 
 interface Harmony {
   shift: Tone.PitchShift;
+  gain: Tone.Gain;
+}
+interface SamplerVoice {
+  player: Tone.Player;
   gain: Tone.Gain;
 }
 
@@ -25,6 +34,12 @@ export interface InstrumentApi {
   start: () => Promise<void>;
   ensureMic: (deviceId?: string) => Promise<void>;
   setSource: (source: SoundSource) => void;
+  /** Choose the vocal engine (sampler vs live harmonizer). */
+  setVocalMode: (mode: VocalMode) => void;
+  /** Record a short voice sample for the sampler (persisted). */
+  recordSample: () => Promise<void>;
+  /** Install a previously-saved voice sample at startup. */
+  loadSample: (blob: Blob) => Promise<void>;
   /** Drive the sound: which notes (or null) and whether the gate is open. */
   update: (notes: string[] | null, gate: boolean) => void;
   /** Apply MiMU-style motion expression (volume / brightness / bend / reverb). */
@@ -44,11 +59,15 @@ export interface InstrumentApi {
   previewRelease: () => void;
   micError: string | null;
   micReady: boolean;
+  hasSample: boolean;
+  isRecordingSample: boolean;
 }
 
 export function useInstrument(): InstrumentApi {
   const [micError, setMicError] = useState<string | null>(null);
   const [micReady, setMicReady] = useState(false);
+  const [hasSample, setHasSample] = useState(false);
+  const [isRecordingSample, setIsRecordingSample] = useState(false);
 
   const masterRef = useRef<Tone.Gain | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
@@ -61,10 +80,15 @@ export function useInstrument(): InstrumentApi {
   const meterRef = useRef<Tone.Meter | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micPullElRef = useRef<HTMLAudioElement | null>(null);
+  const samplerVoicesRef = useRef<SamplerVoice[]>([]);
+  const baseMidiRef = useRef(60); // pitch of the recorded sample (default C4)
 
   const sourceRef = useRef<SoundSource>("synth");
+  const vocalModeRef = useRef<VocalMode>("sampler");
   const synthKeyRef = useRef("silence");
   const vocalNotesKeyRef = useRef("none");
+  const samplerNotesKeyRef = useRef("none");
 
   const start = useCallback(async () => {
     await Tone.start();
@@ -126,6 +150,15 @@ export function useInstrument(): InstrumentApi {
     const ctx = Tone.getContext().rawContext as AudioContext;
     const src = ctx.createMediaStreamSource(stream);
     micSourceRef.current = src;
+    // Chrome quirk: a MediaStreamAudioSourceNode stays silent unless the stream
+    // is also "pulled" by a media element. Attach a muted <audio> to wake it up.
+    if (!micPullElRef.current) {
+      const el = document.createElement("audio");
+      el.muted = true;
+      micPullElRef.current = el;
+    }
+    micPullElRef.current.srcObject = stream;
+    micPullElRef.current.play().catch(() => {});
     if (meterRef.current) Tone.connect(src, meterRef.current);
     if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
     for (const h of harmoniesRef.current) Tone.connect(src, h.shift);
@@ -207,18 +240,57 @@ export function useInstrument(): InstrumentApi {
     voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.005 : 0.03);
   }, []);
 
+  // Sampler: play the recorded voice transposed to each chord note (replicate +
+  // transpose). Looping players give constant sustain; no mic in the output.
+  const applySampler = useCallback((notes: string[] | null, gate: boolean) => {
+    const voices = samplerVoicesRef.current;
+    const key = notes && notes.length ? notes.join(",") : "none";
+    if (key !== samplerNotesKeyRef.current) {
+      samplerNotesKeyRef.current = key;
+      const midis = notes ? notes.map(noteToMidi) : [];
+      const base = baseMidiRef.current;
+      voices.forEach((v, i) => {
+        if (i < midis.length) {
+          v.player.playbackRate = Math.pow(2, (midis[i] - base) / 12);
+          v.gain.gain.rampTo(SAMPLER_LEVEL, 0.02);
+        } else {
+          v.gain.gain.rampTo(0, 0.02);
+        }
+      });
+    }
+    const on = !!(gate && notes && notes.length && voices.length);
+    voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.005 : 0.03);
+  }, []);
+
+  const muteLive = useCallback(() => {
+    dryGainRef.current?.gain.rampTo(0, 0.03);
+    harmoniesRef.current.forEach((h) => h.gain.gain.rampTo(0, 0.03));
+    vocalNotesKeyRef.current = "none";
+  }, []);
+
+  const muteSampler = useCallback(() => {
+    samplerVoicesRef.current.forEach((v) => v.gain.gain.rampTo(0, 0.03));
+    samplerNotesKeyRef.current = "none";
+  }, []);
+
   const update = useCallback(
     (notes: string[] | null, gate: boolean) => {
       if (sourceRef.current === "synth") {
         applySynth(notes, gate);
         voiceGainRef.current?.gain.rampTo(0, 0.05);
+      } else if (vocalModeRef.current === "sampler") {
+        applySampler(notes, gate);
+        muteLive();
+        synthRef.current?.releaseAll();
+        synthKeyRef.current = "silence";
       } else {
         applyVocal(notes, gate);
+        muteSampler();
         synthRef.current?.releaseAll();
         synthKeyRef.current = "silence";
       }
     },
-    [applySynth, applyVocal],
+    [applySynth, applyVocal, applySampler, muteLive, muteSampler],
   );
 
   const setSource = useCallback((source: SoundSource) => {
@@ -232,6 +304,73 @@ export function useInstrument(): InstrumentApi {
       synthKeyRef.current = "silence";
     }
   }, []);
+
+  const setVocalMode = useCallback(
+    (mode: VocalMode) => {
+      vocalModeRef.current = mode;
+      if (mode === "sampler") muteLive();
+      else muteSampler();
+    },
+    [muteLive, muteSampler],
+  );
+
+  // Build (or rebuild) the looping sampler players from a decoded buffer.
+  const buildSampler = useCallback((buf: AudioBuffer) => {
+    const vg = voiceGainRef.current;
+    if (!vg) return;
+    const toneBuf = new Tone.ToneAudioBuffer(buf);
+    if (samplerVoicesRef.current.length === 0) {
+      samplerVoicesRef.current = Array.from({ length: SAMPLER_VOICES }, () => {
+        const gain = new Tone.Gain(0).connect(vg);
+        const player = new Tone.Player({ loop: true, fadeIn: 0.01, fadeOut: 0.01 }).connect(gain);
+        return { player, gain };
+      });
+    }
+    for (const v of samplerVoicesRef.current) {
+      v.player.buffer = toneBuf;
+      try {
+        v.player.stop();
+      } catch {
+        /* not started yet */
+      }
+      v.player.start();
+    }
+  }, []);
+
+  const installSampleBlob = useCallback(
+    async (blob: Blob) => {
+      const arrayBuf = await blob.arrayBuffer();
+      const ctx = Tone.getContext().rawContext as AudioContext;
+      const audioBuf = await ctx.decodeAudioData(arrayBuf);
+      const hz = estimatePitchHz(audioBuf.getChannelData(0), audioBuf.sampleRate);
+      baseMidiRef.current = hz ? hzToMidi(hz) : 60;
+      buildSampler(audioBuf);
+      samplerNotesKeyRef.current = "none";
+      setHasSample(true);
+    },
+    [buildSampler],
+  );
+
+  const recordSample = useCallback(async () => {
+    await ensureMic();
+    const src = micSourceRef.current;
+    if (!src) return;
+    const rec = new Tone.Recorder();
+    Tone.connect(src, rec);
+    setIsRecordingSample(true);
+    rec.start();
+    await new Promise((r) => setTimeout(r, SAMPLE_SECONDS * 1000));
+    const blob = await rec.stop();
+    rec.dispose();
+    setIsRecordingSample(false);
+    await installSampleBlob(blob);
+    await saveVoiceSample(blob);
+  }, [ensureMic, installSampleBlob]);
+
+  const loadSample = useCallback(
+    (blob: Blob) => installSampleBlob(blob),
+    [installSampleBlob],
+  );
 
   const setExpression = useCallback((e: Expression) => {
     masterRef.current?.gain.rampTo(e.volume, 0.05);
@@ -265,6 +404,9 @@ export function useInstrument(): InstrumentApi {
     start,
     ensureMic,
     setSource,
+    setVocalMode,
+    recordSample,
+    loadSample,
     update,
     setExpression,
     setInputDevice,
@@ -276,5 +418,7 @@ export function useInstrument(): InstrumentApi {
     previewRelease,
     micError,
     micReady,
+    hasSample,
+    isRecordingSample,
   };
 }
