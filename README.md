@@ -35,9 +35,11 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
       volume, no feedback. The sample's base pitch is auto-detected (autocorrelation)
       so chords land at the key's pitches, and it persists across reloads.
     - **Live** — a real-time harmonizer: your **dry voice is the lead** (you hear
-      your actual words) with quieter pitch-shifted **harmony notes** on top,
-      following the chord. The dry lead is immediate; the harmony notes carry some
-      pitch-shift artifact/latency inherent to real-time browser pitch-shifting.
+      your actual words) with quieter **harmony notes** on top, following the chord.
+      Harmonies use a **WSOLA pitch-shifter (soundtouchjs) in an AudioWorklet**
+      (`public/soundtouch-worklet.js`) — much cleaner than a granular shifter,
+      though real-time pitch-shifting still has ~tens-of-ms latency. A **Harmonies
+      only** toggle mutes the dry lead to reduce mic feedback. Use headphones.
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.

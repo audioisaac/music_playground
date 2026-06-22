@@ -22,7 +22,7 @@ const SAMPLER_LEVEL = 0.6; // each sampler voice (headroom for the limiter)
 const SAMPLE_SECONDS = 2; // length of the recorded voice sample
 
 interface Harmony {
-  shift: Tone.PitchShift;
+  node: AudioWorkletNode;
   gain: Tone.Gain;
 }
 interface SamplerVoice {
@@ -36,6 +36,8 @@ export interface InstrumentApi {
   setSource: (source: SoundSource) => void;
   /** Choose the vocal engine (sampler vs live harmonizer). */
   setVocalMode: (mode: VocalMode) => void;
+  /** Live only: mute the dry lead (output harmonies only) to cut feedback. */
+  setHarmoniesOnly: (only: boolean) => void;
   /** Record a short voice sample for the sampler (persisted). */
   recordSample: () => Promise<void>;
   /** Install a previously-saved voice sample at startup. */
@@ -86,15 +88,26 @@ export function useInstrument(): InstrumentApi {
 
   const sourceRef = useRef<SoundSource>("synth");
   const vocalModeRef = useRef<VocalMode>("sampler");
+  const harmoniesOnlyRef = useRef(false);
   const synthKeyRef = useRef("silence");
   const vocalNotesKeyRef = useRef("none");
   const samplerNotesKeyRef = useRef("none");
 
   const start = useCallback(async () => {
     await Tone.start();
-    // Minimize scheduling latency for live, interactive triggering.
-    Tone.getContext().lookAhead = 0;
+    // Small look-ahead (not 0): 0 starves the scheduler and causes crackle.
+    Tone.getContext().lookAhead = 0.02;
     if (masterRef.current) return;
+
+    const ctx = Tone.getContext().rawContext as AudioContext;
+    // WSOLA pitch-shift worklet (cleaner than the granular Tone.PitchShift).
+    try {
+      await ctx.audioWorklet.addModule(
+        import.meta.env.BASE_URL + "soundtouch-worklet.js",
+      );
+    } catch (e) {
+      setMicError(`Harmonizer worklet failed to load: ${e instanceof Error ? e.message : e}`);
+    }
 
     // Chain: master -> filter -> reverb -> fxOut -> limiter -> destination.
     // Motion expression drives master gain (volume), filter cutoff (brightness)
@@ -118,17 +131,23 @@ export function useInstrument(): InstrumentApi {
       volume: -10,
     }).connect(master);
 
-    const voiceGain = new Tone.Gain(0).connect(master);
+    // Voice bus bypasses the reverb so harmonies stay clean/dry.
+    const voiceGain = new Tone.Gain(0).connect(fxOut);
     voiceGainRef.current = voiceGain;
 
     // Dry lead: the user's actual voice/words, un-shifted.
     dryGainRef.current = new Tone.Gain(0).connect(voiceGain);
 
-    // Harmony voices: only the non-root chord intervals, quieter than the lead.
+    // Harmony voices: WSOLA pitch-shifter worklet per non-root chord interval.
     harmoniesRef.current = Array.from({ length: HARMONY_COUNT }, () => {
       const gain = new Tone.Gain(0).connect(voiceGain);
-      const shift = new Tone.PitchShift({ pitch: 0, windowSize: 0.05 }).connect(gain);
-      return { shift, gain };
+      const node = new AudioWorkletNode(ctx, "soundtouch-shifter", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: 1,
+      });
+      Tone.connect(node, gain);
+      return { node, gain };
     });
 
     meterRef.current = new Tone.Meter();
@@ -161,7 +180,7 @@ export function useInstrument(): InstrumentApi {
     micPullElRef.current.play().catch(() => {});
     if (meterRef.current) Tone.connect(src, meterRef.current);
     if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
-    for (const h of harmoniesRef.current) Tone.connect(src, h.shift);
+    for (const h of harmoniesRef.current) src.connect(h.node);
     setMicReady(true);
     setMicError(null);
   }, []);
@@ -225,10 +244,12 @@ export function useInstrument(): InstrumentApi {
       vocalNotesKeyRef.current = key;
       // intervals[0] is the root (0) -> the dry lead; the rest are harmonies.
       const harmonies = notes ? relativeIntervals(notes).slice(1) : [];
-      dryGainRef.current?.gain.rampTo(notes && notes.length ? DRY_LEVEL : 0, 0.02);
+      const dryTarget = notes && notes.length && !harmoniesOnlyRef.current ? DRY_LEVEL : 0;
+      dryGainRef.current?.gain.rampTo(dryTarget, 0.02);
       harmoniesRef.current.forEach((h, i) => {
         if (i < harmonies.length) {
-          h.shift.pitch = harmonies[i];
+          const p = h.node.parameters.get("pitch");
+          if (p) p.value = harmonies[i];
           h.gain.gain.rampTo(HARMONY_LEVEL, 0.02);
         } else {
           h.gain.gain.rampTo(0, 0.02);
@@ -313,6 +334,11 @@ export function useInstrument(): InstrumentApi {
     },
     [muteLive, muteSampler],
   );
+
+  const setHarmoniesOnly = useCallback((only: boolean) => {
+    harmoniesOnlyRef.current = only;
+    vocalNotesKeyRef.current = "none"; // force dry-lead level to re-apply
+  }, []);
 
   // Build (or rebuild) the looping sampler players from a decoded buffer.
   const buildSampler = useCallback((buf: AudioBuffer) => {
@@ -405,6 +431,7 @@ export function useInstrument(): InstrumentApi {
     ensureMic,
     setSource,
     setVocalMode,
+    setHarmoniesOnly,
     recordSample,
     loadSample,
     update,

@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: SoundSettings = {
   source: "synth",
   sustainMode: "hand",
   vocalMode: "sampler",
+  harmoniesOnly: false,
   sensitivity: 0.5,
   motion: DEFAULT_MOTION,
 };

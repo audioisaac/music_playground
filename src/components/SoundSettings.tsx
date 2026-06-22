@@ -149,9 +149,21 @@ export function SoundSettings({
               </span>
             </div>
           ) : (
-            <p className="hint">
-              You'll hear your own voice (dry) plus harmony notes following the chord.
-            </p>
+            <>
+              <p className="hint">
+                Your own voice (dry) + WSOLA-shifted harmony notes following the chord.
+              </p>
+              <label className="switch" style={{ marginTop: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={settings.harmoniesOnly}
+                  onChange={(e) =>
+                    onChange({ ...settings, harmoniesOnly: e.target.checked })
+                  }
+                />
+                Harmonies only (mute my dry voice — reduces feedback)
+              </label>
+            </>
           )}
         </>
       )}

@@ -63,6 +63,8 @@ export interface SoundSettings {
   sustainMode: SustainMode;
   /** Vocal engine when source = "vocal". */
   vocalMode: VocalMode;
+  /** Live vocal mode: output harmonies only (mute dry lead) to reduce feedback. */
+  harmoniesOnly: boolean;
   /** 0..1; higher = the voice gate triggers on quieter singing. */
   sensitivity: number;
   /** Selected audio devices (deviceId); undefined = system default. */

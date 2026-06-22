@@ -203,6 +203,7 @@ export default function App() {
     await instrument.start();
     instrument.setSource(s.source);
     instrument.setVocalMode(s.vocalMode);
+    instrument.setHarmoniesOnly(s.harmoniesOnly);
     // Pre-warm the mic now (overlapping the camera/model load) so vocals turn
     // on instantly later instead of paying ~3s of getUserMedia on first use.
     instrument.ensureMic(s.inputDeviceId);
@@ -246,6 +247,12 @@ export default function App() {
     instrumentRef.current.setVocalMode(settings.vocalMode);
     lastPlayKeyRef.current = "force-rebuild";
   }, [settings.vocalMode]);
+
+  // Apply "harmonies only" (mute dry lead) changes.
+  useEffect(() => {
+    instrumentRef.current.setHarmoniesOnly(settings.harmoniesOnly);
+    lastPlayKeyRef.current = "force-rebuild";
+  }, [settings.harmoniesOnly]);
 
   // Open the mic when a feature needs it.
   useEffect(() => {
