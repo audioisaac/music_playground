@@ -43,7 +43,11 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   audio file **and** a replayable timeline of chord events. Replay any session in-app.
 
 > 🎧 In vocal or voice-gated modes, use headphones — speaker output can re-enter
-> the mic and feed back.
+> the mic and feed back. The mic is pre-warmed at **Start** (so vocals turn on
+> instantly, not after a multi-second `getUserMedia` delay). Best device combo:
+> **earphones for output + your computer's built-in mic for input** — this avoids
+> feedback *and* the Bluetooth headset-mic profile switch (a ~1-3s delay that
+> recurs whenever the mic engages if the browser uses the Bluetooth mic).
 
 ## Gesture Mapping (calibration)
 

@@ -47,7 +47,8 @@ export function useInstrument(): InstrumentApi {
   const dryGainRef = useRef<Tone.Gain | null>(null);
   const harmoniesRef = useRef<Harmony[]>([]);
   const meterRef = useRef<Tone.Meter | null>(null);
-  const micRef = useRef<Tone.UserMedia | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   const sourceRef = useRef<SoundSource>("synth");
   const synthKeyRef = useRef("silence");
@@ -90,14 +91,26 @@ export function useInstrument(): InstrumentApi {
   }, []);
 
   const ensureMic = useCallback(async () => {
-    if (micRef.current) return;
+    if (micStreamRef.current) return;
     try {
-      const mic = new Tone.UserMedia();
-      await mic.open();
-      micRef.current = mic;
-      if (meterRef.current) mic.connect(meterRef.current);
-      if (dryGainRef.current) mic.connect(dryGainRef.current);
-      for (const h of harmoniesRef.current) mic.connect(h.shift);
+      // Raw getUserMedia so we can disable auto-gain (which causes slow volume
+      // drift) and keep input latency low. Pre-warmed at Start and kept open
+      // for the whole session, so vocals turn on instantly.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          autoGainControl: false,
+          echoCancellation: true,
+          noiseSuppression: true,
+          channelCount: 1,
+        },
+      });
+      micStreamRef.current = stream;
+      const ctx = Tone.getContext().rawContext as AudioContext;
+      const src = ctx.createMediaStreamSource(stream);
+      micSourceRef.current = src;
+      if (meterRef.current) Tone.connect(src, meterRef.current);
+      if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
+      for (const h of harmoniesRef.current) Tone.connect(src, h.shift);
       setMicReady(true);
       setMicError(null);
     } catch (e) {
@@ -165,7 +178,7 @@ export function useInstrument(): InstrumentApi {
 
   const getInputLevel = useCallback(() => {
     const m = meterRef.current;
-    if (!m || !micRef.current) return -Infinity;
+    if (!m || !micStreamRef.current) return -Infinity;
     const v = m.getValue();
     return typeof v === "number" ? v : v[0];
   }, []);

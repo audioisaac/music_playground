@@ -175,6 +175,9 @@ export default function App() {
   const handleStart = useCallback(async () => {
     await instrument.start();
     instrument.setSource(settingsRef.current.source);
+    // Pre-warm the mic now (overlapping the camera/model load) so vocals turn
+    // on instantly later instead of paying ~3s of getUserMedia on first use.
+    instrument.ensureMic();
     setStarted(true);
   }, [instrument]);
 
