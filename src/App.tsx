@@ -24,6 +24,7 @@ import { ChordDisplay } from "./components/ChordDisplay";
 import { GestureMappingPanel } from "./components/GestureMappingPanel";
 import { RecorderPanel } from "./components/RecorderPanel";
 import { SoundSettings } from "./components/SoundSettings";
+import { VoiceLab } from "./components/VoiceLab";
 import { MotionPanel } from "./components/MotionPanel";
 
 // How many consecutive frames a gesture must hold before it commits.
@@ -75,7 +76,6 @@ export default function App() {
     sungNote: string | null;
     harmonyNotes: string[];
   }>({ sungNote: null, harmonyNotes: [] });
-  const [voiceCheck, setVoiceCheck] = useState(false);
 
   const instrument = useInstrument();
   const recorder = useRecorder(instrument);
@@ -250,13 +250,6 @@ export default function App() {
     }
   }, [started, settings.source, settings.sustainMode]);
 
-  // Toggle the voice-check monitor (ephemeral — never persisted, so it can't
-  // auto-enable into feedback on reload).
-  const handleVoiceCheck = useCallback((on: boolean) => {
-    setVoiceCheck(on);
-    instrumentRef.current.setVoiceCheck(on);
-  }, []);
-
   // Re-voice the held chord when the key changes mid-play.
   useEffect(() => {
     committedShapeRef.current = "force-rebuild";
@@ -287,7 +280,6 @@ export default function App() {
             chord={display.chord}
             primaryLabel={display.primaryLabel}
             modifierLabel={display.modifierLabel}
-            sungNote={vocalLive.sungNote}
             harmonyNotes={vocalLive.harmonyNotes}
           />
         </div>
@@ -304,8 +296,17 @@ export default function App() {
             outputSelectable={instrument.outputSelectable}
             onInputDevice={handleInputDevice}
             onOutputDevice={handleOutputDevice}
-            voiceCheck={voiceCheck}
-            onVoiceCheck={handleVoiceCheck}
+          />
+          <VoiceLab
+            inputLevel={audioUi.inputLevel}
+            isCapturing={instrument.isCapturing}
+            hasCapture={instrument.hasCapture}
+            micError={instrument.micError}
+            onCapture={() => instrument.captureVoice()}
+            onPlayOriginal={instrument.playCapture}
+            onPlayShifted={instrument.playCaptureShifted}
+            onPitchChange={instrument.setCapturePitch}
+            onStop={instrument.stopCapture}
           />
           <MotionPanel
             motion={settings.motion}

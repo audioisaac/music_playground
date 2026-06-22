@@ -5,8 +5,6 @@ interface Props {
   chord: ResolvedChord | null;
   primaryLabel: string | null;
   modifierLabel: string | null;
-  /** Live sung note name (vocal mode), or null when not singing. */
-  sungNote: string | null;
   /** Live harmony note names being formed around the sung lead. */
   harmonyNotes: string[];
 }
@@ -15,7 +13,6 @@ export function ChordDisplay({
   chord,
   primaryLabel,
   modifierLabel,
-  sungNote,
   harmonyNotes,
 }: Props) {
   // Pitch classes in the current chord, to flag harmony notes "apart from" it.
@@ -41,27 +38,21 @@ export function ChordDisplay({
         <div className="chord-name muted">—</div>
       )}
 
-      {sungNote && (
+      {harmonyNotes.length > 0 && (
         <div className="vocal-readout">
-          <div className="singing">
-            <span className="vr-label">Singing</span>
-            <span className="vr-note">{sungNote}</span>
-          </div>
           <div className="harmony">
             <span className="vr-label">Harmony</span>
             <span className="vr-notes">
-              {harmonyNotes.length
-                ? harmonyNotes.map((n, i) => {
-                    const pc = ((noteToMidi(n) % 12) + 12) % 12;
-                    const added = !chordPcs.has(pc);
-                    return (
-                      <span key={`${n}-${i}`} className={added ? "added" : ""}>
-                        {n}
-                        {i < harmonyNotes.length - 1 ? " · " : ""}
-                      </span>
-                    );
-                  })
-                : "—"}
+              {harmonyNotes.map((n, i) => {
+                const pc = ((noteToMidi(n) % 12) + 12) % 12;
+                const added = !chordPcs.has(pc);
+                return (
+                  <span key={`${n}-${i}`} className={added ? "added" : ""}>
+                    {n}
+                    {i < harmonyNotes.length - 1 ? " · " : ""}
+                  </span>
+                );
+              })}
             </span>
           </div>
         </div>

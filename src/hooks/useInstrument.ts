@@ -3,9 +3,9 @@
 //  - a live vocal harmonizer: the DRY mic is the lead (so you hear your own
 //    words), with WSOLA-shifted copies added as chord-aware SATB harmony notes
 //    chosen by the real-time harmony decision engine.
-// The mic is also metered for voice-activity gating, and a "voice check" monitor
-// can echo the live mic transposed by a fixed interval. Everything sums into
-// `master` -> limiter -> destination; the recorder taps `fxOut`.
+// It also hosts a "Voice Lab": capture the mic to a buffer, play it back, and
+// pitch-shift that playback. Everything sums into `master` -> limiter ->
+// destination; the recorder taps `fxOut`.
 
 import { useCallback, useRef, useState } from "react";
 import * as Tone from "tone";
@@ -27,8 +27,7 @@ const HARMONY_COUNT = 3; // pitch-shifted SATB voices added around the dry lead
 const VOICE_LEVEL = 1.0; // voice bus gain when gated on
 const DRY_LEVEL = 1.0; // the un-shifted lead voice (your actual words)
 const HARMONY_LEVEL = 0.5; // each harmony note, quieter than the lead
-const MONITOR_SEMITONES = 7; // voice-check monitor: echo a perfect 5th up
-const MONITOR_LEVEL = 0.9; // voice-check monitor output level
+const CAPTURE_SECONDS = 3; // Voice Lab: default capture length
 
 // Real-time harmony decision (control-rate, main thread — not the audio thread).
 const HARMONY_TICK_MS = 30; // ~33 Hz re-solve cadence
@@ -54,8 +53,16 @@ export interface InstrumentApi {
   setSource: (source: SoundSource) => void;
   /** Mute the dry lead (output harmonies only) to cut feedback. */
   setHarmoniesOnly: (only: boolean) => void;
-  /** Voice-check monitor: echo the live mic transposed by a fixed interval. */
-  setVoiceCheck: (on: boolean) => void;
+  /** Voice Lab — capture the mic to a buffer (default 3s). */
+  captureVoice: (seconds?: number) => Promise<void>;
+  /** Voice Lab — play the captured buffer back, unmodified. */
+  playCapture: () => void;
+  /** Voice Lab — play the captured buffer through the pitch-shift worklet. */
+  playCaptureShifted: () => void;
+  /** Voice Lab — set the playback pitch shift (semitones; live during playback). */
+  setCapturePitch: (semitones: number) => void;
+  /** Voice Lab — stop any capture playback. */
+  stopCapture: () => void;
   /** Drive the sound: which notes (or null) and whether the gate is open. */
   update: (notes: string[] | null, gate: boolean) => void;
   /** Apply MiMU-style motion expression (volume / brightness / bend / reverb). */
@@ -77,11 +84,16 @@ export interface InstrumentApi {
   previewRelease: () => void;
   micError: string | null;
   micReady: boolean;
+  /** Voice Lab status. */
+  isCapturing: boolean;
+  hasCapture: boolean;
 }
 
 export function useInstrument(): InstrumentApi {
   const [micError, setMicError] = useState<string | null>(null);
   const [micReady, setMicReady] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [hasCapture, setHasCapture] = useState(false);
 
   const masterRef = useRef<Tone.Gain | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
@@ -96,9 +108,12 @@ export function useInstrument(): InstrumentApi {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micPullElRef = useRef<HTMLAudioElement | null>(null);
-  // Voice-check monitor: one extra shifter that echoes the live mic, ungated.
-  const monitorNodeRef = useRef<AudioWorkletNode | null>(null);
-  const monitorGainRef = useRef<Tone.Gain | null>(null);
+  // Voice Lab: captured buffer + a dedicated playback pitch-shifter.
+  const capturedBufferRef = useRef<AudioBuffer | null>(null);
+  const capturePlayerRef = useRef<Tone.Player | null>(null);
+  const captureShifterRef = useRef<AudioWorkletNode | null>(null);
+  const captureGainRef = useRef<Tone.Gain | null>(null);
+  const capturePitchRef = useRef(0);
 
   // Live harmony decision engine state (drives the worklet pitch params).
   const harmonyCtxRef = useRef<HarmonyContext | null>(null);
@@ -234,19 +249,16 @@ export function useInstrument(): InstrumentApi {
         Tone.connect(node, gain);
         harmonies.push({ node, gain });
       }
-      // Voice-check monitor: one more shifter, routed straight to fxOut (ungated,
-      // bypasses voiceGain) so it echoes the live mic regardless of the chord gate.
-      const monitorGain = new Tone.Gain(0).connect(fxOut);
-      const monitorNode = new AudioWorkletNode(ctx, "soundtouch-shifter", {
+      // Voice Lab playback shifter: captured buffer -> this -> captureGain -> fxOut.
+      const captureGain = new Tone.Gain(1).connect(fxOut);
+      const captureShifter = new AudioWorkletNode(ctx, "soundtouch-shifter", {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         channelCount: 1,
       });
-      const mp = monitorNode.parameters.get("pitch");
-      if (mp) mp.value = MONITOR_SEMITONES;
-      Tone.connect(monitorNode, monitorGain);
-      monitorNodeRef.current = monitorNode;
-      monitorGainRef.current = monitorGain;
+      Tone.connect(captureShifter, captureGain);
+      captureShifterRef.current = captureShifter;
+      captureGainRef.current = captureGain;
     } catch (e) {
       setMicError(
         `Live harmonizer unavailable (worklet): ${e instanceof Error ? e.message : e}`,
@@ -291,9 +303,6 @@ export function useInstrument(): InstrumentApi {
     if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
     for (const h of harmoniesRef.current) {
       try { src.connect(h.node); } catch { /* skip if worklet node is broken */ }
-    }
-    if (monitorNodeRef.current) {
-      try { src.connect(monitorNodeRef.current); } catch { /* monitor unavailable */ }
     }
     setMicReady(true);
     setMicError(null);
@@ -408,17 +417,71 @@ export function useInstrument(): InstrumentApi {
     vocalNotesKeyRef.current = "none"; // force dry-lead level to re-apply
   }, []);
 
-  // Voice-check monitor: echo the live mic transposed a fixed interval. Opens the
-  // mic on demand; routed to fxOut directly so it sounds regardless of the gate.
-  const setVoiceCheck = useCallback(
-    (on: boolean) => {
-      if (on) ensureMic();
-      const mp = monitorNodeRef.current?.parameters.get("pitch");
-      if (mp) mp.value = MONITOR_SEMITONES;
-      monitorGainRef.current?.gain.rampTo(on ? MONITOR_LEVEL : 0, 0.03);
+  // ── Voice Lab: capture → playback → modulate ───────────────────────────────
+
+  const stopCapture = useCallback(() => {
+    const p = capturePlayerRef.current;
+    if (p) {
+      try { p.stop(); } catch { /* not started */ }
+      p.dispose();
+      capturePlayerRef.current = null;
+    }
+  }, []);
+
+  // Step 1 — capture: record the mic source to an AudioBuffer (no gestures needed).
+  const captureVoice = useCallback(
+    async (seconds = CAPTURE_SECONDS) => {
+      await ensureMic();
+      const src = micSourceRef.current;
+      if (!src) return;
+      const rec = new Tone.Recorder();
+      Tone.connect(src, rec);
+      setIsCapturing(true);
+      rec.start();
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+      const blob = await rec.stop();
+      rec.dispose(); // releases the src -> recorder connection
+      const ctx = Tone.getContext().rawContext as AudioContext;
+      capturedBufferRef.current = await ctx.decodeAudioData(await blob.arrayBuffer());
+      setIsCapturing(false);
+      setHasCapture(true);
     },
     [ensureMic],
   );
+
+  // Build a one-shot player from the captured buffer, routed to `dest`.
+  const playBuffer = useCallback(
+    (dest: Tone.ToneAudioNode | AudioWorkletNode) => {
+      const buf = capturedBufferRef.current;
+      if (!buf) return;
+      stopCapture();
+      const player = new Tone.Player(new Tone.ToneAudioBuffer(buf));
+      player.connect(dest as Tone.ToneAudioNode);
+      capturePlayerRef.current = player;
+      player.start();
+    },
+    [stopCapture],
+  );
+
+  // Step 2 — faithful playback: straight to fxOut, no shifter.
+  const playCapture = useCallback(() => {
+    if (fxOutRef.current) playBuffer(fxOutRef.current);
+  }, [playBuffer]);
+
+  // Step 3 — modulate: through the dedicated pitch-shift worklet.
+  const playCaptureShifted = useCallback(() => {
+    const shifter = captureShifterRef.current;
+    if (!shifter) return;
+    const p = shifter.parameters.get("pitch");
+    if (p) p.value = capturePitchRef.current;
+    playBuffer(shifter);
+  }, [playBuffer]);
+
+  const setCapturePitch = useCallback((semitones: number) => {
+    capturePitchRef.current = semitones;
+    const p = captureShifterRef.current?.parameters.get("pitch");
+    if (p) p.value = semitones; // live update while a shifted playback is sounding
+  }, []);
 
   const setExpression = useCallback((e: Expression) => {
     masterRef.current?.gain.rampTo(e.volume, 0.05);
@@ -464,7 +527,11 @@ export function useInstrument(): InstrumentApi {
     ensureMic,
     setSource,
     setHarmoniesOnly,
-    setVoiceCheck,
+    captureVoice,
+    playCapture,
+    playCaptureShifted,
+    setCapturePitch,
+    stopCapture,
     update,
     setExpression,
     setInputDevice,
@@ -477,5 +544,7 @@ export function useInstrument(): InstrumentApi {
     previewRelease,
     micError,
     micReady,
+    isCapturing,
+    hasCapture,
   };
 }

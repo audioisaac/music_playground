@@ -18,9 +18,6 @@ interface Props {
   outputSelectable: boolean;
   onInputDevice: (deviceId: string) => void;
   onOutputDevice: (deviceId: string) => void;
-  /** Voice-check monitor (ephemeral, not persisted): echo my voice transposed. */
-  voiceCheck: boolean;
-  onVoiceCheck: (on: boolean) => void;
 }
 
 const SOURCES: Array<{ v: SoundSource; label: string }> = [
@@ -47,11 +44,9 @@ export function SoundSettings({
   outputSelectable,
   onInputDevice,
   onOutputDevice,
-  voiceCheck,
-  onVoiceCheck,
 }: Props) {
   const needsMic =
-    settings.source === "vocal" || settings.sustainMode === "voice" || voiceCheck;
+    settings.source === "vocal" || settings.sustainMode === "voice";
 
   return (
     <section className="panel sound-settings">
@@ -129,21 +124,6 @@ export function SoundSettings({
             Harmonies only (mute my dry voice — reduces feedback)
           </label>
         </>
-      )}
-
-      <label className="switch" style={{ marginTop: 6 }}>
-        <input
-          type="checkbox"
-          checked={voiceCheck}
-          onChange={(e) => onVoiceCheck(e.target.checked)}
-        />
-        Voice check (monitor) — hear my voice shifted back
-      </label>
-      {voiceCheck && (
-        <p className="hint warn">
-          🎧 Headphones only — sing to hear your voice echoed a 5th up (verifies
-          the mic + pitch shifter). Turn off when done.
-        </p>
       )}
 
       {needsMic && (

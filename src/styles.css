@@ -362,6 +362,53 @@ button.link {
   background: var(--accent-2);
 }
 
+/* Voice Lab */
+.voice-lab .lab-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 10px;
+}
+.voice-lab .lab-num {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.voice-lab .lab-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.voice-lab .lab-body button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+.voice-lab .lab-body .meter {
+  flex: 1 1 80px;
+  min-width: 80px;
+}
+.voice-lab .lab-pitch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 /* Mapping panel */
 .map-section {
   margin-top: 12px;

@@ -42,10 +42,13 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
     lead to reduce mic feedback. The **Now Playing** panel shows the note you're
     singing and the live harmony notes (notes outside the current chord are
     highlighted). Use headphones.
-  - **Voice check (monitor)** — a Sound-panel toggle that echoes your live voice
-    transposed by a fixed interval (a 5th up) straight back, to verify the mic +
-    pitch shifter + latency are working. Headphones only (it routes the mic to the
-    speakers). It is not persisted, so it never auto-enables into feedback on reload.
+- **Voice Lab** (panel) — a staged diagnostic for the vocal pipeline, independent
+  of gestures/chords, to prove the basics in order: **(1) Capture** — record 3s of
+  your mic to a buffer (with a live level meter); **(2) Play original** — hear that
+  recording back, unmodified; **(3) Play shifted** — hear it pitch-shifted through
+  the WSOLA worklet with a −12…+12 semitone slider (drag it mid-playback to bend the
+  pitch). Two separate play buttons keep each capability testable on its own.
+  Headphones recommended.
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.
