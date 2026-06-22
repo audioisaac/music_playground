@@ -77,10 +77,6 @@ export default function App() {
   });
   const [audioUi, setAudioUi] = useState({ inputLevel: 0, voiceActive: false });
   const [liveMotion, setLiveMotion] = useState<HandMotion | null>(null);
-  const [vocalLive, setVocalLive] = useState<{
-    sungNote: string | null;
-    harmonyNotes: string[];
-  }>({ sungNote: null, harmonyNotes: [] });
 
   const instrument = useInstrument();
   const recorder = useRecorder(instrument);
@@ -197,7 +193,6 @@ export default function App() {
           : 0,
         voiceActive,
       });
-      setVocalLive(instrumentRef.current.getVocalInfo());
     }
   }, []);
 
@@ -212,7 +207,6 @@ export default function App() {
     const s = settingsRef.current;
     await instrument.start();
     instrument.setSource(s.source);
-    instrument.setHarmoniesOnly(s.harmoniesOnly);
     // Pre-warm the mic now (overlapping the camera/model load) so vocals turn
     // on instantly later instead of paying ~3s of getUserMedia on first use.
     instrument.ensureMic(s.inputDeviceId);
@@ -246,12 +240,6 @@ export default function App() {
     instrumentRef.current.setSource(settings.source);
     lastPlayKeyRef.current = "force-rebuild";
   }, [settings.source]);
-
-  // Apply "harmonies only" (mute dry lead) changes.
-  useEffect(() => {
-    instrumentRef.current.setHarmoniesOnly(settings.harmoniesOnly);
-    lastPlayKeyRef.current = "force-rebuild";
-  }, [settings.harmoniesOnly]);
 
   // Open the mic when a feature needs it.
   useEffect(() => {
@@ -290,7 +278,6 @@ export default function App() {
             chord={display.chord}
             primaryLabel={display.primaryLabel}
             modifierLabel={display.modifierLabel}
-            harmonyNotes={vocalLive.harmonyNotes}
           />
         </div>
 
@@ -343,10 +330,10 @@ export default function App() {
           (2nd inversion). Modifier hand stacks two things: its <em>shape</em> adds
           an extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
           the quality — point up = force major, down = force minor, sideways =
-          diatonic. Choose the synth or your own vocals — in vocal mode your live
-          voice is stacked with the gesture chord's intervals in parallel
-          (MiMU-style) — and sustain either while your hand is up or only while you
-          sing.
+          diatonic. Choose the <em>Synth</em> or the <em>Vocoder</em> — in vocoder
+          mode the gesture chord is the carrier and your mic is the modulator, so
+          the chord sings your words — and sustain either while your hand is up or
+          only while you sing.
         </p>
       </footer>
     </div>

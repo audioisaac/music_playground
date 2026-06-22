@@ -32,15 +32,14 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   the modifier hand held sideways, since up forces major.)
 - **Sound source** (Sound panel):
   - **Synth** — a Tone.js polyphonic synth plays the chord.
-  - **My vocals** — a real-time **MiMU-style parallel harmonizer**. Your **dry voice
-    is the lead** (you hear your actual words), and the **gesture chord's intervals
-    are stacked on it in parallel** — sing over a gestured C major and you hear your
-    voice + a major 3rd + a 5th, moving with your pitch (your hands shape the stack,
-    your voice carries it). The layers are `Tone.PitchShift` nodes set to fixed
-    chord intervals, so the shift is instant (no per-frame solving). `Tone.PitchShift`
-    is granular (slight shimmer at large shifts, ~tens-of-ms latency). A **Harmonies
-    only** toggle mutes the dry lead. The **Now Playing** panel shows the live
-    harmony note names. Runs on built-in speakers — see the feedback note below.
+  - **Vocoder** — a real-time **vocoder** built from a Web Audio filter bank
+    (`src/lib/vocoder.ts`) — no DAW or plugin needed. The **gesture-chord synth is
+    the carrier** and your **mic is the modulator**, so the **chord "sings" your
+    words** in a robotic/synthetic timbre (hold a chord and talk/sing). It's a bank
+    of band-pass filters: your voice's energy in each band opens the carrier's
+    matching band, plus a high-pass "sibilance" path keeps consonants intelligible.
+    Near-instant (no pitch detection/shifting, no worklet) and **speaker-friendly**
+    (your raw voice is never output, so it barely feeds back).
 - **Voice Lab** (panel) — a staged diagnostic for the vocal pipeline, independent
   of gestures/chords, to prove the basics in order: **(1) Capture** — record 3s of
   your mic to a buffer (with a live level meter); **(2) Play original** — hear that
@@ -66,15 +65,13 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   motion expression) to a downloadable audio file **and** a replayable timeline of
   chord events. Replay any session in-app.
 
-> 🔊 **Built-in mic + speakers are supported.** The live harmonizer runs the mic
-> back out to the speakers, so to keep that stable without headphones the app (a)
-> requests the browser's **echo cancellation** on the mic, and (b) **auto-mutes the
-> voice bus when the mic goes quiet** (a feedback guard), so a residual loop can't
-> sustain a howl between phrases. Headphones are still the cleanest option but are
-> no longer required. The mic is pre-warmed at **Start** (so vocals turn on
-> instantly, not after a multi-second `getUserMedia` delay). On Bluetooth earbuds,
-> using their *mic* forces the low-quality headset profile (a ~1-3s switch); prefer
-> the built-in mic for input.
+> 🔊 **Built-in mic + speakers are supported.** The vocoder uses your mic only as a
+> *modulator* (it never outputs your raw voice), so it barely feeds back — no
+> headphones required. The app also requests the browser's **echo cancellation** on
+> the mic. The mic is pre-warmed at **Start** (so the vocoder turns on instantly,
+> not after a multi-second `getUserMedia` delay). On Bluetooth earbuds, using their
+> *mic* forces the low-quality headset profile (a ~1-3s switch); prefer the built-in
+> mic for input.
 
 ## Gesture Mapping (calibration)
 
@@ -100,8 +97,8 @@ The camera needs `localhost` or HTTPS (`getUserMedia`). Audio starts on the
 
 ```
 src/
-  lib/        pure logic: musicTheory, handShape, defaultTemplates, gestureMap, chordEngine, storage, handLandmarker
-  hooks/      useHandTracking (camera + detect loop), useInstrument (synth + vocal harmonizer + mic), useRecorder
+  lib/        pure logic: musicTheory, handShape, defaultTemplates, gestureMap, chordEngine, vocoder, storage, handLandmarker
+  hooks/      useHandTracking (camera + detect loop), useInstrument (synth + vocoder + mic), useRecorder
   components/ CameraView, KeySelector, ChordDisplay, GestureMappingPanel, RecorderPanel, StatusBar
   App.tsx     wires poses → chord engine → synth + recorder (with frame debouncing)
 ```

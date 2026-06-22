@@ -48,7 +48,7 @@ export type HandRole = "primary" | "modifier";
 /** Which way a hand points (wrist→fingers). Drives the quality override. */
 export type Orientation = "up" | "down" | "side";
 
-/** Where the sustained sound comes from. */
+/** Where the sustained sound comes from. `vocal` = the vocoder. */
 export type SoundSource = "synth" | "vocal";
 
 /** What keeps a chord sounding. */
@@ -58,8 +58,6 @@ export type SustainMode = "hand" | "voice";
 export interface SoundSettings {
   source: SoundSource;
   sustainMode: SustainMode;
-  /** Vocal mode: output harmonies only (mute dry lead) to reduce feedback. */
-  harmoniesOnly: boolean;
   /** 0..1; higher = the voice gate triggers on quieter singing. */
   sensitivity: number;
   /** Selected audio devices (deviceId); undefined = system default. */

@@ -22,7 +22,7 @@ interface Props {
 
 const SOURCES: Array<{ v: SoundSource; label: string }> = [
   { v: "synth", label: "Synth" },
-  { v: "vocal", label: "My vocals" },
+  { v: "vocal", label: "Vocoder" },
 ];
 const SUSTAINS: Array<{ v: SustainMode; label: string }> = [
   { v: "hand", label: "Hand up" },
@@ -108,22 +108,12 @@ export function SoundSettings({
       )}
 
       {settings.source === "vocal" && (
-        <>
-          <p className="hint">
-            Your own voice (dry) + the gesture chord's intervals stacked on it in
-            parallel (your voice + 3rd + 5th, …), moving with your pitch.
-          </p>
-          <label className="switch" style={{ marginTop: 6 }}>
-            <input
-              type="checkbox"
-              checked={settings.harmoniesOnly}
-              onChange={(e) =>
-                onChange({ ...settings, harmoniesOnly: e.target.checked })
-              }
-            />
-            Harmonies only (mute my dry voice — reduces feedback)
-          </label>
-        </>
+        <p className="hint">
+          Vocoder: the gesture chord is the carrier and your mic is the modulator,
+          so the <strong>chord sings your words</strong>. Hold a chord and talk or
+          sing. (Robotic/synthetic timbre — your natural voice isn't output, so it
+          barely feeds back on speakers.)
+        </p>
       )}
 
       {needsMic && (
@@ -131,7 +121,7 @@ export function SoundSettings({
           {micError
             ? `Mic error: ${micError}`
             : micReady
-              ? "🎙️ Mic on — built-in speakers are fine: echo cancellation + an auto feedback-mute keep it stable. Headphones optional for the cleanest sound."
+              ? "🎙️ Mic on — built-in speakers are fine (the vocoder doesn't output your raw mic, so it barely feeds back)."
               : "🎤 Starting mic…"}
         </p>
       )}

@@ -12,7 +12,6 @@ const SETTINGS_KEY = "gcs.soundSettings.v1";
 export const DEFAULT_SETTINGS: SoundSettings = {
   source: "synth",
   sustainMode: "hand",
-  harmoniesOnly: false,
   sensitivity: 0.5,
   motion: DEFAULT_MOTION,
 };
