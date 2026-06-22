@@ -1,19 +1,21 @@
 // The audio engine. Owns a shared master bus and two sound sources:
 //  - a Tone.PolySynth, and
-//  - a live vocal harmonizer (mic -> N pitch-shifters tuned to the chord's
-//    relative intervals).
+//  - a live vocal harmonizer: the DRY mic is the lead (so you hear your own
+//    words), with pitch-shifted copies added as quieter harmony notes.
 // The mic is also metered for voice-activity gating. Everything sums into
-// `master`, which the recorder taps so it captures whichever source is active.
+// `master` -> limiter -> destination; the recorder taps `master`.
 
 import { useCallback, useRef, useState } from "react";
 import * as Tone from "tone";
 import type { SoundSource } from "../types";
 import { relativeIntervals } from "../lib/musicTheory";
 
-const VOICE_COUNT = 4; // max simultaneous harmonized voices
-const VOICE_LEVEL = 1.0; // master voice-bus gain when gated on
+const HARMONY_COUNT = 3; // pitch-shifted notes added above the dry lead
+const VOICE_LEVEL = 1.0; // voice bus gain when gated on
+const DRY_LEVEL = 1.0; // the un-shifted lead voice (your actual words)
+const HARMONY_LEVEL = 0.5; // each harmony note, quieter than the lead
 
-interface Voice {
+interface Harmony {
   shift: Tone.PitchShift;
   gain: Tone.Gain;
 }
@@ -42,7 +44,8 @@ export function useInstrument(): InstrumentApi {
   const masterRef = useRef<Tone.Gain | null>(null);
   const synthRef = useRef<Tone.PolySynth | null>(null);
   const voiceGainRef = useRef<Tone.Gain | null>(null);
-  const voicesRef = useRef<Voice[]>([]);
+  const dryGainRef = useRef<Tone.Gain | null>(null);
+  const harmoniesRef = useRef<Harmony[]>([]);
   const meterRef = useRef<Tone.Meter | null>(null);
   const micRef = useRef<Tone.UserMedia | null>(null);
 
@@ -52,22 +55,34 @@ export function useInstrument(): InstrumentApi {
 
   const start = useCallback(async () => {
     await Tone.start();
+    // Minimize scheduling latency for live, interactive triggering.
+    Tone.getContext().lookAhead = 0;
     if (masterRef.current) return;
 
-    const master = new Tone.Gain(1).toDestination();
+    // master -> limiter -> destination: the limiter caps any residual
+    // speaker->mic feedback so it can't swell into a crescendo.
+    const limiter = new Tone.Limiter(-2).toDestination();
+    const master = new Tone.Gain(1).connect(limiter);
     masterRef.current = master;
 
     synthRef.current = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: "fatsawtooth", count: 3, spread: 24 },
-      envelope: { attack: 0.04, decay: 0.2, sustain: 0.7, release: 0.6 },
+      // Flat envelope: near-instant attack, no decay, full sustain -> constant
+      // volume while held (no crescendo/decay), quick release.
+      envelope: { attack: 0.01, decay: 0, sustain: 1, release: 0.08 },
       volume: -10,
     }).connect(master);
 
     const voiceGain = new Tone.Gain(0).connect(master);
     voiceGainRef.current = voiceGain;
-    voicesRef.current = Array.from({ length: VOICE_COUNT }, () => {
+
+    // Dry lead: the user's actual voice/words, un-shifted.
+    dryGainRef.current = new Tone.Gain(0).connect(voiceGain);
+
+    // Harmony voices: only the non-root chord intervals, quieter than the lead.
+    harmoniesRef.current = Array.from({ length: HARMONY_COUNT }, () => {
       const gain = new Tone.Gain(0).connect(voiceGain);
-      const shift = new Tone.PitchShift({ pitch: 0, windowSize: 0.1 }).connect(gain);
+      const shift = new Tone.PitchShift({ pitch: 0, windowSize: 0.05 }).connect(gain);
       return { shift, gain };
     });
 
@@ -81,7 +96,8 @@ export function useInstrument(): InstrumentApi {
       await mic.open();
       micRef.current = mic;
       if (meterRef.current) mic.connect(meterRef.current);
-      for (const v of voicesRef.current) mic.connect(v.shift);
+      if (dryGainRef.current) mic.connect(dryGainRef.current);
+      for (const h of harmoniesRef.current) mic.connect(h.shift);
       setMicReady(true);
       setMicError(null);
     } catch (e) {
@@ -97,26 +113,28 @@ export function useInstrument(): InstrumentApi {
     const s = synthRef.current;
     if (!s) return;
     s.releaseAll();
-    if (target) s.triggerAttack(target, Tone.now() + 0.01);
+    if (target) s.triggerAttack(target); // no scheduling offset -> immediate
   }, []);
 
   const applyVocal = useCallback((notes: string[] | null, gate: boolean) => {
     const key = notes && notes.length ? notes.join(",") : "none";
     if (key !== vocalNotesKeyRef.current) {
       vocalNotesKeyRef.current = key;
-      const intervals = notes ? relativeIntervals(notes) : [];
-      const perVoice = intervals.length ? 1 / intervals.length : 0;
-      voicesRef.current.forEach((v, i) => {
-        if (i < intervals.length) {
-          v.shift.pitch = intervals[i];
-          v.gain.gain.rampTo(perVoice, 0.03);
+      // intervals[0] is the root (0) -> the dry lead; the rest are harmonies.
+      const harmonies = notes ? relativeIntervals(notes).slice(1) : [];
+      dryGainRef.current?.gain.rampTo(notes && notes.length ? DRY_LEVEL : 0, 0.02);
+      harmoniesRef.current.forEach((h, i) => {
+        if (i < harmonies.length) {
+          h.shift.pitch = harmonies[i];
+          h.gain.gain.rampTo(HARMONY_LEVEL, 0.02);
         } else {
-          v.gain.gain.rampTo(0, 0.03);
+          h.gain.gain.rampTo(0, 0.02);
         }
       });
     }
     const on = !!(gate && notes && notes.length);
-    voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.03 : 0.08);
+    // Short ramps gate the bus without swelling.
+    voiceGainRef.current?.gain.rampTo(on ? VOICE_LEVEL : 0, on ? 0.005 : 0.03);
   }, []);
 
   const update = useCallback(
@@ -158,7 +176,7 @@ export function useInstrument(): InstrumentApi {
     const s = synthRef.current;
     if (!s) return;
     s.releaseAll();
-    s.triggerAttack(notes, Tone.now() + 0.01);
+    s.triggerAttack(notes);
   }, []);
 
   const previewRelease = useCallback(() => {

@@ -28,9 +28,12 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   the modifier hand held sideways, since up forces major.)
 - **Sound source** (Sound panel):
   - **Synth** — a Tone.js polyphonic synth plays the chord.
-  - **My vocals** — a live harmonizer pitch-shifts your microphone voice into the
-    chord (relative harmony: it stacks the chord's intervals on whatever pitch you
-    sing, so the *quality* matches even though the absolute pitch follows you).
+  - **My vocals** — a live harmonizer. Your **dry voice is the lead** (you hear
+    your actual words) and quieter pitch-shifted **harmony notes** are added on
+    top, following the chord (relative harmony: stacked on whatever pitch you sing,
+    so the *quality* matches even though the absolute pitch follows you). The dry
+    lead is immediate; the harmony notes have some pitch-shift artifact and
+    latency, which is inherent to real-time browser pitch-shifting.
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.

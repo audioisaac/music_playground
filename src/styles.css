@@ -139,6 +139,9 @@ body {
   font-size: 0.82rem;
   margin: 8px 0 0;
 }
+.hint.warn {
+  color: var(--accent-2);
+}
 
 /* Chord display */
 .chord-display {

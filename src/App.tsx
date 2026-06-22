@@ -23,8 +23,9 @@ import { RecorderPanel } from "./components/RecorderPanel";
 import { SoundSettings } from "./components/SoundSettings";
 
 // How many consecutive frames a gesture must hold before it commits.
-// Smooths out detection jitter without adding noticeable latency.
-const STABLE_FRAMES = 2;
+// 1 = commit immediately for the snappiest response (shape matching is stable
+// enough that flicker is rare).
+const STABLE_FRAMES = 1;
 // How long the voice gate stays open after the level drops, so words/breaths
 // don't stutter the sustain.
 const VOICE_HOLD_MS = 160;

@@ -89,12 +89,18 @@ export function SoundSettings({
         </div>
       )}
 
-      {needsMic && (
+      {settings.source === "vocal" && (
         <p className="hint">
+          You'll hear your own voice (dry) plus harmony notes following the chord.
+        </p>
+      )}
+
+      {needsMic && (
+        <p className={`hint ${micError ? "" : "warn"}`}>
           {micError
             ? `Mic error: ${micError}`
             : micReady
-              ? "🎤 Mic on. Use headphones to avoid feedback."
+              ? "🎧 Mic on — use headphones, or the speakers will feed back."
               : "Requesting microphone…"}
         </p>
       )}
