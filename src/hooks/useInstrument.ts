@@ -138,19 +138,31 @@ export function useInstrument(): InstrumentApi {
     // Dry lead: the user's actual voice/words, un-shifted.
     dryGainRef.current = new Tone.Gain(0).connect(voiceGain);
 
-    // Harmony voices: WSOLA pitch-shifter worklet per non-root chord interval.
-    harmoniesRef.current = Array.from({ length: HARMONY_COUNT }, () => {
-      const gain = new Tone.Gain(0).connect(voiceGain);
-      const node = new AudioWorkletNode(ctx, "soundtouch-shifter", {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        channelCount: 1,
-      });
-      Tone.connect(node, gain);
-      return { node, gain };
-    });
-
+    // Meter must be created before harmonies so mic metering works even if the
+    // worklet fails to load (harmony nodes would throw, but meter is already set).
     meterRef.current = new Tone.Meter();
+
+    // Harmony voices: WSOLA pitch-shifter worklet per non-root chord interval.
+    // Wrapped in try/catch: if the worklet isn't registered (load failure above),
+    // AudioWorkletNode throws — degrade gracefully to meter+dry-lead only.
+    const harmonies: Harmony[] = [];
+    try {
+      for (let i = 0; i < HARMONY_COUNT; i++) {
+        const gain = new Tone.Gain(0).connect(voiceGain);
+        const node = new AudioWorkletNode(ctx, "soundtouch-shifter", {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          channelCount: 1,
+        });
+        Tone.connect(node, gain);
+        harmonies.push({ node, gain });
+      }
+    } catch (e) {
+      setMicError(
+        `Live harmonizer unavailable (worklet): ${e instanceof Error ? e.message : e}`,
+      );
+    }
+    harmoniesRef.current = harmonies;
   }, []);
 
   // Raw getUserMedia (auto-gain off for low latency / no volume drift), wired
@@ -180,7 +192,9 @@ export function useInstrument(): InstrumentApi {
     micPullElRef.current.play().catch(() => {});
     if (meterRef.current) Tone.connect(src, meterRef.current);
     if (dryGainRef.current) Tone.connect(src, dryGainRef.current);
-    for (const h of harmoniesRef.current) src.connect(h.node);
+    for (const h of harmoniesRef.current) {
+      try { src.connect(h.node); } catch { /* skip if worklet node is broken */ }
+    }
     setMicReady(true);
     setMicError(null);
   }, []);
