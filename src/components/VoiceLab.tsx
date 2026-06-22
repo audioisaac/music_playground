@@ -5,7 +5,6 @@ interface Props {
   inputLevel: number;
   isCapturing: boolean;
   hasCapture: boolean;
-  pitchShiftReady: boolean;
   micError: string | null;
   onCapture: () => void;
   onPlayOriginal: () => void;
@@ -25,7 +24,6 @@ export function VoiceLab({
   inputLevel,
   isCapturing,
   hasCapture,
-  pitchShiftReady,
   micError,
   onCapture,
   onPlayOriginal,
@@ -106,12 +104,6 @@ export function VoiceLab({
           </label>
         </div>
       </div>
-      {hasCapture && !pitchShiftReady && (
-        <p className="hint">
-          Pitch-shift worklet didn't load — “Play shifted” is using varispeed
-          (pitch and speed change together).
-        </p>
-      )}
     </section>
   );
 }

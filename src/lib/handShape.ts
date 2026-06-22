@@ -15,7 +15,11 @@ export interface Pt {
 
 const WRIST = 0;
 const MIDDLE_MCP = 9;
+const FINGERTIPS = [8, 12, 16, 20]; // index, middle, ring, pinky tips
 const EPS = 1e-6;
+
+// How far the hand must rotate forward/back before it changes the inversion.
+export const TILT_DEADZONE = 0.3;
 
 // cos(40°): how close to vertical the hand must point to count as up/down.
 const VERTICAL_COS = 0.766;
@@ -70,6 +74,36 @@ export function handMotion(landmarks: Pt[]): HandMotion {
     size,
     roll,
   };
+}
+
+/**
+ * Forward/back rotation of the hand from landmark depth (z). MediaPipe reports z
+ * relative to the wrist, smaller = closer to the camera. Returns the mean
+ * fingertip depth minus the wrist depth, normalized by the 2D palm length so it
+ * is roughly scale-invariant:
+ *   negative → fingertips toward the camera (hand rotated AWAY from the body)
+ *   positive → fingertips away from the camera (rotated TOWARD the body)
+ * z is the least reliable axis, so callers should use a generous deadzone.
+ */
+export function handDepthTilt(landmarks: Pt[]): number {
+  const wrist = landmarks[WRIST];
+  const mid = landmarks[MIDDLE_MCP];
+  const palm = Math.hypot(mid.x - wrist.x, mid.y - wrist.y);
+  if (palm < EPS) return 0;
+  const wz = wrist.z ?? 0;
+  let sum = 0;
+  for (const i of FINGERTIPS) sum += (landmarks[i].z ?? 0) - wz;
+  return sum / FINGERTIPS.length / palm;
+}
+
+/**
+ * Map forward/back tilt to a triad inversion:
+ *  0 = root position, 1 = 3rd in the bass (away), 2 = 5th in the bass (toward).
+ */
+export function tiltToInversion(tilt: number): 0 | 1 | 2 {
+  if (tilt < -TILT_DEADZONE) return 1; // away from body → 3rd in bass
+  if (tilt > TILT_DEADZONE) return 2; // toward body → 5th in bass
+  return 0;
 }
 
 /**

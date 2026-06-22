@@ -44,4 +44,19 @@ describe("resolveChord — stacking extension + orientation override", () => {
     const { chord } = resolveChord(CMaj, ii, null, null, DEFAULT_CONFIG);
     expect(chord?.name).toBe("Dm");
   });
+
+  it("threads the inversion through to the voicing + slash name", () => {
+    const I = degree([1]); // index -> degree I (C major)
+    const root = resolveChord(CMaj, I, null, null, DEFAULT_CONFIG, 0).chord;
+    expect(root?.notes).toEqual(["C4", "E4", "G4"]);
+    expect(root?.name).toBe("C");
+
+    const first = resolveChord(CMaj, I, null, null, DEFAULT_CONFIG, 1).chord;
+    expect(first?.notes).toEqual(["E4", "G4", "C5"]); // 3rd in bass
+    expect(first?.name).toBe("C/E");
+
+    const second = resolveChord(CMaj, I, null, null, DEFAULT_CONFIG, 2).chord;
+    expect(second?.notes).toEqual(["G4", "C5", "E5"]); // 5th in bass
+    expect(second?.name).toBe("C/G");
+  });
 });

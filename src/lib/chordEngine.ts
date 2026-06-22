@@ -37,6 +37,7 @@ export function resolveChord(
   modifierPose: PoseVector | null,
   modifierOrientation: Orientation | null,
   config: GestureConfig,
+  inversion = 0,
 ): EngineResult {
   if (!primaryPose) {
     return { chord: null, primaryLabel: null, modifierLabel: null };
@@ -65,7 +66,7 @@ export function resolveChord(
     }
   }
 
-  const chord = buildChord(key, primary.degree, qualityMode, extension);
+  const chord = buildChord(key, primary.degree, qualityMode, extension, inversion);
   return {
     chord,
     primaryLabel: primary.label,

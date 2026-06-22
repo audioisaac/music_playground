@@ -11,7 +11,11 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   scale degree: index → I, peace → ii, three → iii, four → IV, open palm → V,
   shaka (thumb + pinky) → vi, horns (index + pinky) → vii°. A relaxed/closed hand
   is silent. (Shapes are recognized holistically, not by counting fingers, so an
-  ambiguous thumb no longer breaks detection.)
+  ambiguous thumb no longer breaks detection.) **Rotate** this hand to **invert**
+  the triad: tilt it **away from your body** → 3rd in the bass (1st inversion, e.g.
+  **C → C/E**); **toward your body** → 5th in the bass (2nd inversion, **C/G**);
+  neutral → root position. (Forward/back tilt is read from landmark depth, the
+  noisiest axis, so it uses a generous deadzone.)
 - **Modifier hand** (default: left) — stacks **two** independent things:
   - **Shape → extension** ("special chord"):
     - ☝️ index → **sus2** (the "2nd")
@@ -46,10 +50,11 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   of gestures/chords, to prove the basics in order: **(1) Capture** — record 3s of
   your mic to a buffer (with a live level meter); **(2) Play original** — hear that
   recording back, unmodified; **(3) Play shifted** — hear it pitch-shifted with a
-  −12…+12 semitone slider (drag it mid-playback to bend the pitch). It uses the WSOLA
-  worklet when available and falls back to varispeed otherwise. Two separate play
-  buttons keep each capability testable on its own. Works on speakers (playback only
-  starts after recording finishes, so there's no live loop).
+  −12…+12 semitone slider (drag it mid-playback to bend the pitch). Shifting uses
+  `Tone.PitchShift`, which is **time-preserving** — the pitch changes but the
+  tempo/length stay the same (no chipmunk). Two separate play buttons keep each
+  capability testable on its own. Works on speakers (playback only starts after
+  recording finishes, so there's no live loop).
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.

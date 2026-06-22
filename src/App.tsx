@@ -14,7 +14,12 @@ import { useRecorder } from "./hooks/useRecorder";
 import { useDevices } from "./hooks/useDevices";
 import { chordId, resolveChord } from "./lib/chordEngine";
 import { GestureConfig } from "./lib/gestureMap";
-import { handMotion, type HandMotion } from "./lib/handShape";
+import {
+  handDepthTilt,
+  handMotion,
+  tiltToInversion,
+  type HandMotion,
+} from "./lib/handShape";
 import { mapMotionToExpression, NEUTRAL_EXPRESSION } from "./lib/expression";
 import { loadConfig, loadSettings, saveConfig, saveSettings } from "./lib/storage";
 import { StatusBar } from "./components/StatusBar";
@@ -115,12 +120,17 @@ export default function App() {
     const now = performance.now();
 
     // 1. Resolve the chord from the hands and debounce the gesture shape.
+    //    The chord hand's forward/back rotation selects the triad inversion.
+    const inversion = primaryHandPose
+      ? tiltToInversion(handDepthTilt(primaryHandPose.landmarks))
+      : 0;
     const result = resolveChord(
       keyRef.current,
       primaryPose,
       modifierPose,
       modifierOrientation,
       configRef.current,
+      inversion,
     );
     const shapeId = chordId(result.chord);
     if (shapeId === pendingIdRef.current) {
@@ -301,7 +311,6 @@ export default function App() {
             inputLevel={audioUi.inputLevel}
             isCapturing={instrument.isCapturing}
             hasCapture={instrument.hasCapture}
-            pitchShiftReady={instrument.pitchShiftReady}
             micError={instrument.micError}
             onCapture={() => instrument.captureVoice()}
             onPlayOriginal={instrument.playCapture}
@@ -329,8 +338,10 @@ export default function App() {
       <footer className="footer">
         <p>
           Chord hand shapes pick the scale degree (index=I, peace=ii, … shaka=vi,
-          horns=vii°). Modifier hand stacks two things: its <em>shape</em> adds an
-          extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
+          horns=vii°); rotating that hand <em>away from your body</em> puts the 3rd
+          in the bass (1st inversion), <em>toward you</em> puts the 5th in the bass
+          (2nd inversion). Modifier hand stacks two things: its <em>shape</em> adds
+          an extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
           the quality — point up = force major, down = force minor, sideways =
           diatonic. Choose the synth or your own harmonized vocals, and sustain
           either while your hand is up or only while you sing.

@@ -89,6 +89,23 @@ export function midiToNoteName(midi: number): string {
   return `${NOTE_NAMES[pc]}${octave}`;
 }
 
+/**
+ * Voice a chord in an inversion by moving the lowest `inversion` notes up an
+ * octave. Notes are assumed ascending (as `buildChord` produces them):
+ * ["C4","E4","G4"] inv1 → ["E4","G4","C5"] (3rd in bass), inv2 → ["G4","C5","E5"]
+ * (5th in bass). `inversion` wraps modulo the chord size.
+ */
+export function invertChord(notes: string[], inversion: number): string[] {
+  if (notes.length === 0) return notes;
+  const inv = ((Math.trunc(inversion) % notes.length) + notes.length) % notes.length;
+  const out = [...notes];
+  for (let i = 0; i < inv; i++) {
+    const low = out.shift() as string;
+    out.push(midiToNoteName(noteToMidi(low) + 12));
+  }
+  return out;
+}
+
 /** Roman numeral label for a degree given its quality. */
 export function romanNumeral(degree: Degree, quality: Quality): string {
   const base = ["I", "II", "III", "IV", "V", "VI", "VII"][degree - 1];
@@ -143,6 +160,7 @@ export function buildChord(
   degree: Degree,
   qualityMode: QualityMode = "diatonic",
   extension: Extension = "none",
+  inversion = 0,
   baseOctave = 4,
 ): ResolvedChord {
   const { rootPc, quality: diatonicQuality } = diatonicTriad(key, degree);
@@ -179,11 +197,19 @@ export function buildChord(
       break;
   }
 
-  const notes = intervals.map((semi) => {
+  const rootPositionNotes = intervals.map((semi) => {
     const pc = (rootPc + semi) % 12;
     const octaveBump = Math.floor((rootPc + semi) / 12);
     return `${NOTE_NAMES[pc]}${baseOctave + octaveBump}`;
   });
+
+  const inv = ((Math.trunc(inversion) % rootPositionNotes.length) +
+    rootPositionNotes.length) % rootPositionNotes.length;
+  const notes = invertChord(rootPositionNotes, inv);
+  const baseName = chordName(NOTE_NAMES[rootPc], quality, extension);
+  // Slash-chord name when inverted, e.g. "C/E" (3rd in bass), "C/G" (5th).
+  const bassPc = ((noteToMidi(notes[0]) % 12) + 12) % 12;
+  const name = inv > 0 ? `${baseName}/${NOTE_NAMES[bassPc]}` : baseName;
 
   return {
     key,
@@ -192,7 +218,8 @@ export function buildChord(
     extension,
     quality,
     notes,
-    name: chordName(NOTE_NAMES[rootPc], quality, extension),
+    inversion: inv,
+    name,
   };
 }
 

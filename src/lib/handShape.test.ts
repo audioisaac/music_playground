@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { handMotion, handOrientation, normalizePose, poseDistance, Pt } from "./handShape";
+import {
+  handDepthTilt,
+  handMotion,
+  handOrientation,
+  normalizePose,
+  poseDistance,
+  Pt,
+  tiltToInversion,
+} from "./handShape";
 
 // A deterministic, distinct set of 21 landmarks (geometry need not be a real
 // hand for invariance tests — only that points differ and palm length > 0).
@@ -99,6 +107,29 @@ describe("handMotion", () => {
     const small = handMotion(hand({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.42 }));
     const large = handMotion(hand({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.1 }));
     expect(large.size).toBeGreaterThan(small.size);
+  });
+});
+
+describe("handDepthTilt / tiltToInversion", () => {
+  // wrist (0) and middle-MCP (9) set the 2D palm; fingertips (8/12/16/20) carry z.
+  const tiltedHand = (tipZ: number): Pt[] => {
+    const pts: Pt[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
+    pts[0] = { x: 0.5, y: 0.6, z: 0 }; // wrist
+    pts[9] = { x: 0.5, y: 0.3, z: 0 }; // middle-MCP (palm length ~0.3)
+    for (const i of [8, 12, 16, 20]) pts[i] = { x: 0.5, y: 0.2, z: tipZ };
+    return pts;
+  };
+
+  it("is negative when the fingertips rotate toward the camera (away from body)", () => {
+    expect(handDepthTilt(tiltedHand(-0.2))).toBeLessThan(0);
+  });
+  it("is positive when the fingertips rotate away from the camera (toward body)", () => {
+    expect(handDepthTilt(tiltedHand(0.2))).toBeGreaterThan(0);
+  });
+  it("maps tilt to inversions with a deadzone", () => {
+    expect(tiltToInversion(0)).toBe(0);
+    expect(tiltToInversion(-1)).toBe(1); // away → 3rd in bass
+    expect(tiltToInversion(1)).toBe(2); // toward → 5th in bass
   });
 });
 

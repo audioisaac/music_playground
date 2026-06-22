@@ -88,8 +88,6 @@ export interface InstrumentApi {
   /** Voice Lab status. */
   isCapturing: boolean;
   hasCapture: boolean;
-  /** Whether the pitch-shift worklet loaded (else "Play shifted" uses varispeed). */
-  pitchShiftReady: boolean;
 }
 
 export function useInstrument(): InstrumentApi {
@@ -97,7 +95,6 @@ export function useInstrument(): InstrumentApi {
   const [micReady, setMicReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [hasCapture, setHasCapture] = useState(false);
-  const [pitchShiftReady, setPitchShiftReady] = useState(false);
 
   const masterRef = useRef<Tone.Gain | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
@@ -113,13 +110,11 @@ export function useInstrument(): InstrumentApi {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micPullElRef = useRef<HTMLAudioElement | null>(null);
-  // Voice Lab: captured buffer + a dedicated playback pitch-shifter.
+  // Voice Lab: captured buffer + a time-preserving pitch shifter for playback.
   const capturedBufferRef = useRef<AudioBuffer | null>(null);
   const capturePlayerRef = useRef<Tone.Player | null>(null);
-  const captureShifterRef = useRef<AudioWorkletNode | null>(null);
-  const captureGainRef = useRef<Tone.Gain | null>(null);
+  const capturePitchShiftRef = useRef<Tone.PitchShift | null>(null);
   const capturePitchRef = useRef(0);
-  const fallbackPlayingRef = useRef(false); // shifted playback is varispeed, not worklet
 
   // Live harmony decision engine state (drives the worklet pitch params).
   const harmonyCtxRef = useRef<HarmonyContext | null>(null);
@@ -268,23 +263,16 @@ export function useInstrument(): InstrumentApi {
         Tone.connect(node, gain);
         harmonies.push({ node, gain });
       }
-      // Voice Lab playback shifter: captured buffer -> this -> captureGain -> fxOut.
-      const captureGain = new Tone.Gain(1).connect(fxOut);
-      const captureShifter = new AudioWorkletNode(ctx, "soundtouch-shifter", {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        channelCount: 1,
-      });
-      Tone.connect(captureShifter, captureGain);
-      captureShifterRef.current = captureShifter;
-      captureGainRef.current = captureGain;
-      setPitchShiftReady(true);
     } catch (e) {
       setMicError(
         `Live harmonizer unavailable (worklet): ${e instanceof Error ? e.message : e}`,
       );
     }
     harmoniesRef.current = harmonies;
+
+    // Voice Lab playback pitch shifter: time-preserving (no chipmunk) and
+    // worklet-free, so "Play shifted" works regardless of the WSOLA worklet.
+    capturePitchShiftRef.current = new Tone.PitchShift({ pitch: 0 }).connect(fxOut);
 
     // Control-rate harmony loop (~33 Hz). Runs on the main thread — it only
     // writes target values to the worklet `pitch` params, never blocking audio.
@@ -484,37 +472,25 @@ export function useInstrument(): InstrumentApi {
   const playCapture = useCallback(() => {
     const player = newCapturePlayer();
     if (!player || !fxOutRef.current) return;
-    fallbackPlayingRef.current = false;
     player.connect(fxOutRef.current);
     player.start();
   }, [newCapturePlayer]);
 
-  // Step 3 — modulate: through the pitch-shift worklet when available, else fall
-  // back to varispeed (playbackRate) so the feature still works if the worklet
-  // didn't load.
+  // Step 3 — modulate: through Tone.PitchShift (time-preserving — pitch changes,
+  // tempo/length stay the same, so no chipmunk).
   const playCaptureShifted = useCallback(() => {
     const player = newCapturePlayer();
-    if (!player) return;
-    const shifter = captureShifterRef.current;
-    if (shifter) {
-      fallbackPlayingRef.current = false;
-      const p = shifter.parameters.get("pitch");
-      if (p) p.value = capturePitchRef.current;
-      Tone.connect(player, shifter); // -> captureGain -> fxOut
-    } else if (fxOutRef.current) {
-      fallbackPlayingRef.current = true; // varispeed: changes pitch AND speed
-      player.playbackRate = Math.pow(2, capturePitchRef.current / 12);
-      player.connect(fxOutRef.current);
-    }
+    const shift = capturePitchShiftRef.current;
+    if (!player || !shift) return;
+    shift.pitch = capturePitchRef.current;
+    player.connect(shift); // -> fxOut
     player.start();
   }, [newCapturePlayer]);
 
   const setCapturePitch = useCallback((semitones: number) => {
     capturePitchRef.current = semitones;
-    const p = captureShifterRef.current?.parameters.get("pitch");
-    if (p) p.value = semitones; // live update while a shifted playback is sounding
-    if (fallbackPlayingRef.current && capturePlayerRef.current) {
-      capturePlayerRef.current.playbackRate = Math.pow(2, semitones / 12);
+    if (capturePitchShiftRef.current) {
+      capturePitchShiftRef.current.pitch = semitones; // live during playback
     }
   }, []);
 
@@ -581,6 +557,5 @@ export function useInstrument(): InstrumentApi {
     micReady,
     isCapturing,
     hasCapture,
-    pitchShiftReady,
   };
 }

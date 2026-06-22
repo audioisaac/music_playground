@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildChord,
   diatonicTriad,
+  invertChord,
   midiToNoteName,
   noteToMidi,
   relativeIntervals,
@@ -82,6 +83,36 @@ describe("buildChord", () => {
     const g7 = buildChord(CMaj, 5, "diatonic", "seventh");
     expect(g7.notes).toEqual(["G4", "B4", "D5", "F5"]);
     expect(g7.name).toBe("G7");
+  });
+});
+
+describe("invertChord", () => {
+  it("moves the lowest note(s) up an octave for each inversion", () => {
+    expect(invertChord(["C4", "E4", "G4"], 0)).toEqual(["C4", "E4", "G4"]);
+    expect(invertChord(["C4", "E4", "G4"], 1)).toEqual(["E4", "G4", "C5"]);
+    expect(invertChord(["C4", "E4", "G4"], 2)).toEqual(["G4", "C5", "E5"]);
+  });
+  it("wraps modulo the chord size", () => {
+    expect(invertChord(["C4", "E4", "G4"], 3)).toEqual(["C4", "E4", "G4"]);
+  });
+});
+
+describe("buildChord — inversions", () => {
+  it("voices the 3rd in the bass and names a slash chord (1st inversion)", () => {
+    const chord = buildChord(CMaj, 1, "diatonic", "none", 1);
+    expect(chord.notes).toEqual(["E4", "G4", "C5"]);
+    expect(chord.inversion).toBe(1);
+    expect(chord.name).toBe("C/E");
+  });
+  it("voices the 5th in the bass (2nd inversion)", () => {
+    const chord = buildChord(CMaj, 1, "diatonic", "none", 2);
+    expect(chord.notes).toEqual(["G4", "C5", "E5"]);
+    expect(chord.name).toBe("C/G");
+  });
+  it("leaves root position unnamed as a slash chord", () => {
+    const chord = buildChord(CMaj, 1, "diatonic", "none", 0);
+    expect(chord.inversion).toBe(0);
+    expect(chord.name).toBe("C");
   });
 });
 

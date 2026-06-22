@@ -93,9 +93,11 @@ export interface ResolvedChord {
   extension: Extension;
   /** Final triad/extended quality after override is applied. */
   quality: Quality;
+  /** Voicing inversion: 0 root, 1 = 3rd in bass, 2 = 5th in bass. */
+  inversion: number;
   /** Tone.js note names, e.g. ["C4","E4","G4"]. */
   notes: string[];
-  /** Human label, e.g. "Cmaj7" or "Dsus4". */
+  /** Human label, e.g. "Cmaj7", "Dsus4", or a slash chord "C/E". */
   name: string;
 }
 
