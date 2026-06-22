@@ -110,8 +110,8 @@ export function SoundSettings({
       {settings.source === "vocal" && (
         <>
           <p className="hint">
-            Your own voice (dry) + a chord-aware SATB harmony chosen in real time
-            and WSOLA-shifted onto your voice.
+            Your own voice (dry) + the gesture chord's intervals stacked on it in
+            parallel (your voice + 3rd + 5th, …), moving with your pitch.
           </p>
           <label className="switch" style={{ marginTop: 6 }}>
             <input

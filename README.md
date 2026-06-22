@@ -32,20 +32,15 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   the modifier hand held sideways, since up forces major.)
 - **Sound source** (Sound panel):
   - **Synth** — a Tone.js polyphonic synth plays the chord.
-  - **My vocals** — a real-time harmonizer driven by a **harmony decision engine**.
-    Your **dry voice is the lead** (you hear your actual words); a small constraint
-    solver (`src/lib/harmony/harmonyDecisionEngine.ts`) detects your sung pitch
-    (autocorrelation) and, instead of fixed intervals, **scores candidate notes**
-    (chord-fit, voice-leading, SATB vocal ranges, dissonance, spacing) to assign
-    **SATB harmony voices** that react to the chord and keep smooth voice leading
-    frame to frame — a choir reacting to a singer, not a fixed +3/+7/+12 stack. The
-    solver runs on the main thread at ~33 Hz (never on the audio thread) and steers
-    the **WSOLA pitch-shifter (soundtouchjs) AudioWorklet**
-    (`public/soundtouch-worklet.js`) to absolute targets via short glides. Real-time
-    shifting still has ~tens-of-ms latency. A **Harmonies only** toggle mutes the dry
-    lead to reduce mic feedback. The **Now Playing** panel shows the live harmony
-    notes (notes outside the current chord are highlighted). Runs on built-in
-    speakers — see the feedback note below.
+  - **My vocals** — a real-time **MiMU-style parallel harmonizer**. Your **dry voice
+    is the lead** (you hear your actual words), and the **gesture chord's intervals
+    are stacked on it in parallel** — sing over a gestured C major and you hear your
+    voice + a major 3rd + a 5th, moving with your pitch (your hands shape the stack,
+    your voice carries it). The layers are `Tone.PitchShift` nodes set to fixed
+    chord intervals, so the shift is instant (no per-frame solving). `Tone.PitchShift`
+    is granular (slight shimmer at large shifts, ~tens-of-ms latency). A **Harmonies
+    only** toggle mutes the dry lead. The **Now Playing** panel shows the live
+    harmony note names. Runs on built-in speakers — see the feedback note below.
 - **Voice Lab** (panel) — a staged diagnostic for the vocal pipeline, independent
   of gestures/chords, to prove the basics in order: **(1) Capture** — record 3s of
   your mic to a buffer (with a live level meter); **(2) Play original** — hear that

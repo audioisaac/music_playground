@@ -17,7 +17,7 @@ interface Props {
  * A staged diagnostic for the vocal pipeline, independent of gestures/chords:
  *   1. Capture the mic to a buffer.
  *   2. Play it back faithfully.
- *   3. Play it back pitch-shifted (the worklet) with a semitone slider.
+ *   3. Play it back pitch-shifted (time-preserving) with a semitone slider.
  * Each stage is verifiable on its own, to isolate where any problem is.
  */
 export function VoiceLab({

@@ -343,8 +343,10 @@ export default function App() {
           (2nd inversion). Modifier hand stacks two things: its <em>shape</em> adds
           an extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
           the quality — point up = force major, down = force minor, sideways =
-          diatonic. Choose the synth or your own harmonized vocals, and sustain
-          either while your hand is up or only while you sing.
+          diatonic. Choose the synth or your own vocals — in vocal mode your live
+          voice is stacked with the gesture chord's intervals in parallel
+          (MiMU-style) — and sustain either while your hand is up or only while you
+          sing.
         </p>
       </footer>
     </div>
