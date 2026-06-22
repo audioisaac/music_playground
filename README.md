@@ -39,16 +39,17 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
     the **WSOLA pitch-shifter (soundtouchjs) AudioWorklet**
     (`public/soundtouch-worklet.js`) to absolute targets via short glides. Real-time
     shifting still has ~tens-of-ms latency. A **Harmonies only** toggle mutes the dry
-    lead to reduce mic feedback. The **Now Playing** panel shows the note you're
-    singing and the live harmony notes (notes outside the current chord are
-    highlighted). Use headphones.
+    lead to reduce mic feedback. The **Now Playing** panel shows the live harmony
+    notes (notes outside the current chord are highlighted). Runs on built-in
+    speakers — see the feedback note below.
 - **Voice Lab** (panel) — a staged diagnostic for the vocal pipeline, independent
   of gestures/chords, to prove the basics in order: **(1) Capture** — record 3s of
   your mic to a buffer (with a live level meter); **(2) Play original** — hear that
-  recording back, unmodified; **(3) Play shifted** — hear it pitch-shifted through
-  the WSOLA worklet with a −12…+12 semitone slider (drag it mid-playback to bend the
-  pitch). Two separate play buttons keep each capability testable on its own.
-  Headphones recommended.
+  recording back, unmodified; **(3) Play shifted** — hear it pitch-shifted with a
+  −12…+12 semitone slider (drag it mid-playback to bend the pitch). It uses the WSOLA
+  worklet when available and falls back to varispeed otherwise. Two separate play
+  buttons keep each capability testable on its own. Works on speakers (playback only
+  starts after recording finishes, so there's no live loop).
 - **Sustain trigger** (Sound panel):
   - **Hand up** — the chord rings while you hold the shape, stops when the hand
     leaves/changes. A clenched fist = silence.
@@ -65,12 +66,15 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   motion expression) to a downloadable audio file **and** a replayable timeline of
   chord events. Replay any session in-app.
 
-> 🎧 In vocal or voice-gated modes, use headphones — speaker output can re-enter
-> the mic and feed back. The mic is pre-warmed at **Start** (so vocals turn on
-> instantly, not after a multi-second `getUserMedia` delay). Best device combo:
-> **earphones for output + your computer's built-in mic for input** — this avoids
-> feedback *and* the Bluetooth headset-mic profile switch (a ~1-3s delay that
-> recurs whenever the mic engages if the browser uses the Bluetooth mic).
+> 🔊 **Built-in mic + speakers are supported.** The live harmonizer runs the mic
+> back out to the speakers, so to keep that stable without headphones the app (a)
+> requests the browser's **echo cancellation** on the mic, and (b) **auto-mutes the
+> voice bus when the mic goes quiet** (a feedback guard), so a residual loop can't
+> sustain a howl between phrases. Headphones are still the cleanest option but are
+> no longer required. The mic is pre-warmed at **Start** (so vocals turn on
+> instantly, not after a multi-second `getUserMedia` delay). On Bluetooth earbuds,
+> using their *mic* forces the low-quality headset profile (a ~1-3s switch); prefer
+> the built-in mic for input.
 
 ## Gesture Mapping (calibration)
 

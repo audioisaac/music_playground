@@ -131,7 +131,7 @@ export function SoundSettings({
           {micError
             ? `Mic error: ${micError}`
             : micReady
-              ? "🎧 Mic on. Tip: earphones for output + your computer mic for input — no feedback, no Bluetooth-mic delay."
+              ? "🎙️ Mic on — built-in speakers are fine: echo cancellation + an auto feedback-mute keep it stable. Headphones optional for the cleanest sound."
               : "🎤 Starting mic…"}
         </p>
       )}

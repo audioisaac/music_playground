@@ -301,6 +301,7 @@ export default function App() {
             inputLevel={audioUi.inputLevel}
             isCapturing={instrument.isCapturing}
             hasCapture={instrument.hasCapture}
+            pitchShiftReady={instrument.pitchShiftReady}
             micError={instrument.micError}
             onCapture={() => instrument.captureVoice()}
             onPlayOriginal={instrument.playCapture}

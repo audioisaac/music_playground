@@ -5,6 +5,7 @@ interface Props {
   inputLevel: number;
   isCapturing: boolean;
   hasCapture: boolean;
+  pitchShiftReady: boolean;
   micError: string | null;
   onCapture: () => void;
   onPlayOriginal: () => void;
@@ -24,6 +25,7 @@ export function VoiceLab({
   inputLevel,
   isCapturing,
   hasCapture,
+  pitchShiftReady,
   micError,
   onCapture,
   onPlayOriginal,
@@ -38,7 +40,8 @@ export function VoiceLab({
       <h2>Voice Lab</h2>
       <p className="hint">
         Prove the basics in order — capture your voice, play it back, then
-        pitch-shift it. 🎧 Headphones recommended.
+        pitch-shift it. Works through your device's speakers (playback only
+        starts after recording finishes, so there's no feedback loop).
       </p>
 
       {/* Step 1 — capture */}
@@ -103,6 +106,12 @@ export function VoiceLab({
           </label>
         </div>
       </div>
+      {hasCapture && !pitchShiftReady && (
+        <p className="hint">
+          Pitch-shift worklet didn't load — “Play shifted” is using varispeed
+          (pitch and speed change together).
+        </p>
+      )}
     </section>
   );
 }
