@@ -1,10 +1,5 @@
-import type { Orientation, PoseVector } from "../types";
-import {
-  GestureConfig,
-  ORIENTATION_QUALITY,
-  bindExtension,
-  bindPrimary,
-} from "../lib/gestureMap";
+import type { PoseVector } from "../types";
+import { GestureConfig, bindExtension, bindPrimary } from "../lib/gestureMap";
 import {
   DEFAULT_MODIFIER,
   DEFAULT_PRIMARY,
@@ -17,7 +12,7 @@ interface Props {
   onChange: (config: GestureConfig) => void;
   primaryPose: PoseVector | null;
   modifierPose: PoseVector | null;
-  modifierOrientation: Orientation | null;
+  facing: "palm" | "back";
 }
 
 function Detected({ pose }: { pose: PoseVector | null }) {
@@ -28,24 +23,17 @@ function Detected({ pose }: { pose: PoseVector | null }) {
   );
 }
 
-const ORIENTATION_ROWS: Array<{ o: Orientation; arrow: string }> = [
-  { o: "up", arrow: "↑ pointing up" },
-  { o: "down", arrow: "↓ pointing down" },
-  { o: "side", arrow: "→ sideways" },
+const FACING_ROWS: Array<{ f: "palm" | "back"; arrow: string; label: string }> = [
+  { f: "palm", arrow: "🤚 palm to camera", label: "diatonic (in key)" },
+  { f: "back", arrow: "🫳 back of hand", label: "flip quality (e.g. Dm → D)" },
 ];
-
-const QUALITY_LABEL: Record<string, string> = {
-  majorOverride: "force MAJOR",
-  minorOverride: "force MINOR",
-  diatonic: "diatonic (in key)",
-};
 
 export function GestureMappingPanel({
   config,
   onChange,
   primaryPose,
   modifierPose,
-  modifierOrientation,
+  facing,
 }: Props) {
   return (
     <section className="panel mapping-panel">
@@ -137,20 +125,17 @@ export function GestureMappingPanel({
 
       <div className="map-section">
         <div className="map-head">
-          <h4>Modifier hand orientation → quality</h4>
+          <h4>Chord hand facing → quality</h4>
         </div>
         <p className="hint">
-          Stacks on top of the extension above, so you can combine e.g. force
-          major + 7th.
+          Show your palm normally; turn the chord hand so its back faces the
+          camera to flip the chord to the opposite quality (major↔minor).
         </p>
         <ul className="map-list">
-          {ORIENTATION_ROWS.map(({ o, arrow }) => (
-            <li
-              key={o}
-              className={modifierOrientation === o && modifierPose ? "active-row" : ""}
-            >
+          {FACING_ROWS.map(({ f, arrow, label }) => (
+            <li key={f} className={facing === f && primaryPose ? "active-row" : ""}>
               <span className="map-label">{arrow}</span>
-              <span className="map-actions">{QUALITY_LABEL[ORIENTATION_QUALITY[o]]}</span>
+              <span className="map-actions">{label}</span>
             </li>
           ))}
         </ul>

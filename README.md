@@ -11,25 +11,23 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   scale degree: index → I, peace → ii, three → iii, four → IV, open palm → V,
   shaka (thumb + pinky) → vi, horns (index + pinky) → vii°. A relaxed/closed hand
   is silent. (Shapes are recognized holistically, not by counting fingers, so an
-  ambiguous thumb no longer breaks detection.) **Rotate** this hand to **invert**
-  the triad: tilt it **away from your body** → 3rd in the bass (1st inversion, e.g.
-  **C → C/E**); **toward your body** → 5th in the bass (2nd inversion, **C/G**);
-  neutral → root position. (Forward/back tilt is read from landmark depth, the
-  noisiest axis, so it uses a generous deadzone.)
-- **Modifier hand** (default: left) — stacks **two** independent things:
-  - **Shape → extension** ("special chord"):
-    - ☝️ index → **sus2** (the "2nd")
-    - index + middle → **sus4** (the "4th")
-    - index + middle + ring → **7th**
-    - four fingers → **add9**
-  - **Orientation → quality** (borrow a chord outside the key):
-    - point **up** → force **MAJOR**
-    - point **down** → force **MINOR** (e.g. play **Cm** while in **C major**)
-    - hold **sideways** → diatonic (in key)
-
-  Because shape matching ignores orientation, the two combine — e.g. a 7th shape
-  pointing up = a forced-major 7th. (A diatonic extension like a dominant V7 is
-  the modifier hand held sideways, since up forces major.)
+  ambiguous thumb no longer breaks detection.) Two **rotations** of this hand add
+  control without changing the degree:
+  - **Forward/back tilt → inversion**: tilt **away from your body** → 3rd in the
+    bass (1st inversion, e.g. **C → C/E**); **toward your body** → 5th in the bass
+    (2nd inversion, **C/G**); neutral → root. (Read from landmark depth, the
+    noisiest axis, so it uses a generous deadzone.)
+  - **Facing → quality flip**: show your **palm** normally; turn so the **back of
+    the hand** faces the camera to **flip the chord to its opposite quality**
+    (major↔minor) — e.g. **Dm → D**, **E → Em**. (Read from the wrist→index→pinky
+    winding order; flip `FACING_SIGN` in `handShape.ts` if palm/back come out
+    swapped on your camera.)
+- **Modifier hand** (default: left) — its **shape adds an extension** ("special
+  chord"):
+  - ☝️ index → **sus2** (the "2nd")
+  - index + middle → **sus4** (the "4th")
+  - index + middle + ring → **7th**
+  - four fingers → **add9**
 - **Sound source** (Sound panel):
   - **Synth** — a Tone.js polyphonic synth plays the chord.
   - **Harmonize** — a real-time **vocal harmonizer** (Antares Harmony Engine style):

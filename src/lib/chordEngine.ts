@@ -3,18 +3,12 @@
 import type {
   PoseVector,
   Key,
-  Orientation,
   QualityMode,
   Extension,
   ResolvedChord,
 } from "../types";
 import { buildChord } from "./musicTheory";
-import {
-  GestureConfig,
-  resolveExtension,
-  resolveOverride,
-  resolvePrimary,
-} from "./gestureMap";
+import { GestureConfig, resolveExtension, resolvePrimary } from "./gestureMap";
 
 export interface EngineResult {
   chord: ResolvedChord | null;
@@ -26,18 +20,17 @@ export interface EngineResult {
 /**
  * Resolve the sounding chord from the current hand poses.
  *
- * `primaryPose` selects the degree. The modifier hand contributes two stacking
- * axes: its shape (`modifierPose`) adds an extension, and its orientation
- * (`modifierOrientation`) sets the major/minor/diatonic quality override.
- * A missing/fist primary hand yields silence.
+ * `primaryPose` selects the degree; the chord hand's `facing` (palm vs back of
+ * hand) flips the quality to its opposite when "back". The modifier hand's shape
+ * (`modifierPose`) adds an extension. A missing/fist primary hand yields silence.
  */
 export function resolveChord(
   key: Key,
   primaryPose: PoseVector | null,
   modifierPose: PoseVector | null,
-  modifierOrientation: Orientation | null,
   config: GestureConfig,
   inversion = 0,
+  facing: "palm" | "back" = "palm",
 ): EngineResult {
   if (!primaryPose) {
     return { chord: null, primaryLabel: null, modifierLabel: null };
@@ -48,17 +41,13 @@ export function resolveChord(
     return { chord: null, primaryLabel: null, modifierLabel: null };
   }
 
-  let extension: Extension = "none";
-  let qualityMode: QualityMode = "diatonic";
-  const labelParts: string[] = [];
+  // Back of the chord hand → flip the diatonic quality to its opposite.
+  const qualityMode: QualityMode = facing === "back" ? "flip" : "diatonic";
 
-  // The modifier hand is only active while it is present in frame.
+  let extension: Extension = "none";
+  const labelParts: string[] = [];
+  // The modifier hand only contributes the extension now.
   if (modifierPose) {
-    if (modifierOrientation) {
-      qualityMode = resolveOverride(modifierOrientation);
-      if (qualityMode === "majorOverride") labelParts.push("force maj");
-      else if (qualityMode === "minorOverride") labelParts.push("force min");
-    }
     const ext = resolveExtension(modifierPose, config);
     if (ext) {
       extension = ext.extension;

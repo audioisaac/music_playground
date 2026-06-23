@@ -31,10 +31,11 @@ export type Quality = "major" | "minor" | "diminished" | "augmented";
 /**
  * How the chord quality relates to the key.
  * - `diatonic`: use the naturally occurring quality for this degree.
- * - `majorOverride` / `minorOverride`: borrow a chord outside the key
- *   (e.g. C minor while in C major).
+ * - `majorOverride` / `minorOverride`: force a specific quality.
+ * - `flip`: swap to the opposite of the diatonic quality (major↔minor) — driven
+ *   by showing the back of the chord hand.
  */
-export type QualityMode = "diatonic" | "majorOverride" | "minorOverride";
+export type QualityMode = "diatonic" | "majorOverride" | "minorOverride" | "flip";
 
 /** Extension / "special chord" contributed by the modifier hand. */
 export type Extension = "none" | "sus2" | "sus4" | "seventh" | "add9";

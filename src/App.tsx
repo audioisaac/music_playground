@@ -4,7 +4,6 @@ import type {
   HandPose,
   Handedness,
   Key,
-  Orientation,
   ResolvedChord,
   SoundSettings as Settings,
 } from "./types";
@@ -16,6 +15,7 @@ import { chordId, resolveChord } from "./lib/chordEngine";
 import { GestureConfig } from "./lib/gestureMap";
 import {
   handDepthTilt,
+  handFacing,
   handMotion,
   tiltToInversion,
   type HandMotion,
@@ -48,7 +48,7 @@ function thresholdDb(sensitivity: number): number {
 interface LiveSigs {
   primaryPose: PoseVector | null;
   modifierPose: PoseVector | null;
-  modifierOrientation: Orientation | null;
+  facing: "palm" | "back";
 }
 interface DisplayState {
   chord: ResolvedChord | null;
@@ -68,7 +68,7 @@ export default function App() {
   const [live, setLive] = useState<LiveSigs>({
     primaryPose: null,
     modifierPose: null,
-    modifierOrientation: null,
+    facing: "palm",
   });
   const [display, setDisplay] = useState<DisplayState>({
     chord: null,
@@ -112,21 +112,24 @@ export default function App() {
     const modifierHandPose = poses.find((p) => p.handedness !== primaryHand) ?? null;
     const primaryPose = primaryHandPose?.pose ?? null;
     const modifierPose = modifierHandPose?.pose ?? null;
-    const modifierOrientation = modifierHandPose?.orientation ?? null;
     const now = performance.now();
 
     // 1. Resolve the chord from the hands and debounce the gesture shape.
-    //    The chord hand's forward/back rotation selects the triad inversion.
+    //    The chord hand's forward/back rotation selects the triad inversion, and
+    //    its facing (palm vs back of hand) flips major↔minor.
     const inversion = primaryHandPose
       ? tiltToInversion(handDepthTilt(primaryHandPose.landmarks))
       : 0;
+    const facing = primaryHandPose
+      ? handFacing(primaryHandPose.landmarks, primaryHandPose.handedness)
+      : "palm";
     const result = resolveChord(
       keyRef.current,
       primaryPose,
       modifierPose,
-      modifierOrientation,
       configRef.current,
       inversion,
+      facing,
     );
     const shapeId = chordId(result.chord);
     if (shapeId === pendingIdRef.current) {
@@ -184,7 +187,7 @@ export default function App() {
     // 5. Throttled UI updates (calibration poses + input meter + motion bars).
     if (now - lastLiveRef.current > 80) {
       lastLiveRef.current = now;
-      setLive({ primaryPose, modifierPose, modifierOrientation });
+      setLive({ primaryPose, modifierPose, facing });
       setLiveMotion(motion);
       const level = instrumentRef.current.getInputLevel();
       setAudioUi({
@@ -316,7 +319,7 @@ export default function App() {
             onChange={handleConfigChange}
             primaryPose={live.primaryPose}
             modifierPose={live.modifierPose}
-            modifierOrientation={live.modifierOrientation}
+            facing={live.facing}
           />
           <RecorderPanel recorder={recorder} />
         </div>
@@ -327,10 +330,10 @@ export default function App() {
           Chord hand shapes pick the scale degree (index=I, peace=ii, … shaka=vi,
           horns=vii°); rotating that hand <em>away from your body</em> puts the 3rd
           in the bass (1st inversion), <em>toward you</em> puts the 5th in the bass
-          (2nd inversion). Modifier hand stacks two things: its <em>shape</em> adds
-          an extension (sus2 / sus4 / 7th / add9) and its <em>orientation</em> sets
-          the quality — point up = force major, down = force minor, sideways =
-          diatonic. Choose the <em>Synth</em> or <em>Harmonize</em> — in harmonize
+          (2nd inversion), and showing the <em>back of the hand</em> flips the
+          quality to its opposite (e.g. Dm → D, E → Em). The modifier hand's
+          <em>shape</em> adds an extension (sus2 / sus4 / 7th / add9). Choose the
+          <em>Synth</em> or <em>Harmonize</em> — in harmonize
           mode you hear your own voice plus in-key harmony voices following the
           gesture chord (formant-corrected, so they sound natural) — and sustain
           either while your hand is up or only while you sing.

@@ -84,6 +84,17 @@ describe("buildChord", () => {
     expect(g7.notes).toEqual(["G4", "B4", "D5", "F5"]);
     expect(g7.name).toBe("G7");
   });
+
+  it("flips the quality to its opposite (back of the chord hand)", () => {
+    // ii (D minor) -> flip -> D major.
+    const dMaj = buildChord(CMaj, 2, "flip");
+    expect(dMaj.quality).toBe("major");
+    expect(dMaj.name).toBe("D");
+    // I (C major) -> flip -> C minor.
+    const cMin = buildChord(CMaj, 1, "flip");
+    expect(cMin.quality).toBe("minor");
+    expect(cMin.name).toBe("Cm");
+  });
 });
 
 describe("invertChord", () => {

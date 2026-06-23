@@ -16,8 +16,8 @@ export function ChordDisplay({ chord, primaryLabel, modifierLabel }: Props) {
           <div className="chord-name">{chord.name}</div>
           <div className="chord-roman">
             {romanNumeral(chord.degree, chord.quality)}
-            {chord.qualityMode !== "diatonic" && (
-              <span className="borrowed"> (borrowed)</span>
+            {chord.qualityMode === "flip" && (
+              <span className="borrowed"> (flipped)</span>
             )}
             {chord.inversion > 0 && (
               <span className="inversion">

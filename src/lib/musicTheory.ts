@@ -144,10 +144,12 @@ export function diatonicTriad(
   return { rootPc, quality: qualities[idx] };
 }
 
-/** Apply a major/minor override (borrowed chord) to a base quality. */
+/** Apply a quality override to a base quality. */
 function applyOverride(base: Quality, mode: QualityMode): Quality {
   if (mode === "majorOverride") return "major";
   if (mode === "minorOverride") return "minor";
+  // "flip" = the opposite of the usual quality (e.g. Dm -> D, E -> Em).
+  if (mode === "flip") return base === "major" ? "minor" : "major";
   return base;
 }
 

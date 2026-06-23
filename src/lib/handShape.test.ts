@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   handDepthTilt,
+  handFacing,
   handMotion,
   handOrientation,
   normalizePose,
@@ -130,6 +131,31 @@ describe("handDepthTilt / tiltToInversion", () => {
     expect(tiltToInversion(0)).toBe(0);
     expect(tiltToInversion(-1)).toBe(1); // away → 3rd in bass
     expect(tiltToInversion(1)).toBe(2); // toward → 5th in bass
+  });
+});
+
+describe("handFacing", () => {
+  // wrist(0), index-MCP(5), pinky-MCP(17) set the winding; rest arbitrary.
+  const facingHand = (idxX: number, pkyX: number): Pt[] => {
+    const pts: Pt[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
+    pts[0] = { x: 0.5, y: 0.6 };
+    pts[5] = { x: idxX, y: 0.3 };
+    pts[17] = { x: pkyX, y: 0.3 };
+    return pts;
+  };
+
+  it("reads palm vs back from the winding order (right hand)", () => {
+    expect(handFacing(facingHand(0.4, 0.6), "Right")).toBe("palm");
+    expect(handFacing(facingHand(0.6, 0.4), "Right")).toBe("back");
+  });
+
+  it("flips the sense for the left hand (mirror)", () => {
+    expect(handFacing(facingHand(0.6, 0.4), "Left")).toBe("palm");
+    expect(handFacing(facingHand(0.4, 0.6), "Left")).toBe("back");
+  });
+
+  it("defaults to palm when edge-on (near-zero winding)", () => {
+    expect(handFacing(facingHand(0.5, 0.5), "Right")).toBe("palm");
   });
 });
 

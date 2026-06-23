@@ -14,12 +14,19 @@ export interface Pt {
 }
 
 const WRIST = 0;
+const INDEX_MCP = 5;
 const MIDDLE_MCP = 9;
+const PINKY_MCP = 17;
 const FINGERTIPS = [8, 12, 16, 20]; // index, middle, ring, pinky tips
 const EPS = 1e-6;
 
 // How far the hand must rotate forward/back before it changes the inversion.
 export const TILT_DEADZONE = 0.3;
+
+// Palm/back facing: sign of the wrist→index-MCP→pinky-MCP winding. Flip this one
+// constant if palm and back come out swapped on your camera.
+export const FACING_SIGN = 1;
+const FACING_DEADZONE = 0.004; // near edge-on -> treat as palm (normal)
 
 // cos(40°): how close to vertical the hand must point to count as up/down.
 const VERTICAL_COS = 0.766;
@@ -104,6 +111,24 @@ export function tiltToInversion(tilt: number): 0 | 1 | 2 {
   if (tilt < -TILT_DEADZONE) return 1; // away from body → 3rd in bass
   if (tilt > TILT_DEADZONE) return 2; // toward body → 5th in bass
   return 0;
+}
+
+/**
+ * Whether the **palm** or the **back** of the hand faces the camera, from the
+ * winding order of wrist(0) → index-MCP(5) → pinky-MCP(17) in the image plane
+ * (a 2D cross product — no depth needed). The sign flips between the two hands,
+ * so it is corrected by handedness. MCPs (not fingertips) are used so it works
+ * for any chord shape regardless of which fingers are extended. Edge-on (near
+ * zero) defaults to "palm" (the normal state).
+ */
+export function handFacing(landmarks: Pt[], handedness: Handedness): "palm" | "back" {
+  const w = landmarks[WRIST];
+  const idx = landmarks[INDEX_MCP];
+  const pky = landmarks[PINKY_MCP];
+  const cross = (idx.x - w.x) * (pky.y - w.y) - (idx.y - w.y) * (pky.x - w.x);
+  if (Math.abs(cross) < FACING_DEADZONE) return "palm";
+  const signed = (handedness === "Left" ? -1 : 1) * FACING_SIGN * cross;
+  return signed > 0 ? "palm" : "back";
 }
 
 /**
