@@ -32,14 +32,17 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   the modifier hand held sideways, since up forces major.)
 - **Sound source** (Sound panel):
   - **Synth** — a Tone.js polyphonic synth plays the chord.
-  - **Vocoder** — a real-time **vocoder** built from a Web Audio filter bank
-    (`src/lib/vocoder.ts`) — no DAW or plugin needed. The **gesture-chord synth is
-    the carrier** and your **mic is the modulator**, so the **chord "sings" your
-    words** in a robotic/synthetic timbre (hold a chord and talk/sing). It's a bank
-    of band-pass filters: your voice's energy in each band opens the carrier's
-    matching band, plus a high-pass "sibilance" path keeps consonants intelligible.
-    Near-instant (no pitch detection/shifting, no worklet) and **speaker-friendly**
-    (your raw voice is never output, so it barely feeds back).
+  - **Harmonize** — a real-time **vocal harmonizer** (Antares Harmony Engine style):
+    you hear **your own voice plus in-key harmony voices** that follow the gesture
+    chord, generated live from your singing (no samples). The hard part — making
+    shifted voices sound natural instead of chipmunky — is solved by a hand-written
+    **formant-preserving phase-vocoder AudioWorklet** (`public/formant-shifter-worklet.js`):
+    it estimates the spectral envelope (formants) via a cepstrum, shifts only the
+    excitation, then re-applies the original envelope. Harmony notes are chosen by
+    `src/lib/harmonyVoicing.ts` (each voice snaps to a chord tone above the sung
+    note) after detecting your pitch (`src/lib/pitch.ts`). If the worklet fails to
+    load, voices fall back to `Tone.PitchShift` (works, but not formant-corrected).
+    🎧 Use headphones — your live voice is output, so speakers can feed back.
 - **Voice Lab** (panel) — a staged diagnostic for the vocal pipeline, independent
   of gestures/chords, to prove the basics in order: **(1) Capture** — record 3s of
   your mic to a buffer (with a live level meter); **(2) Play original** — hear that
@@ -65,13 +68,16 @@ Hand tracking runs fully client-side with [MediaPipe](https://ai.google.dev/edge
   motion expression) to a downloadable audio file **and** a replayable timeline of
   chord events. Replay any session in-app.
 
-> 🔊 **Built-in mic + speakers are supported.** The vocoder uses your mic only as a
-> *modulator* (it never outputs your raw voice), so it barely feeds back — no
-> headphones required. The app also requests the browser's **echo cancellation** on
-> the mic. The mic is pre-warmed at **Start** (so the vocoder turns on instantly,
-> not after a multi-second `getUserMedia` delay). On Bluetooth earbuds, using their
-> *mic* forces the low-quality headset profile (a ~1-3s switch); prefer the built-in
-> mic for input.
+> 🎧 **Use headphones for Harmonize.** The harmonizer outputs your live voice (the
+> lead) plus the harmonies, so on speakers the mic can re-enter and feed back. The
+> app requests the browser's **echo cancellation**, and the mic is pre-warmed at
+> **Start** (so harmonies turn on instantly, not after a multi-second `getUserMedia`
+> delay). On Bluetooth earbuds, using their *mic* forces the low-quality headset
+> profile (a ~1-3s switch); prefer the built-in mic for input.
+>
+> The harmonizer's pitch shifting needs an **AudioWorklet**. If the browser console
+> shows a `formant-shifter-worklet.js` load error, harmonies fall back to a
+> (non-formant) `Tone.PitchShift` — paste that error in and it can be fixed.
 
 ## Gesture Mapping (calibration)
 
@@ -97,8 +103,9 @@ The camera needs `localhost` or HTTPS (`getUserMedia`). Audio starts on the
 
 ```
 src/
-  lib/        pure logic: musicTheory, handShape, defaultTemplates, gestureMap, chordEngine, vocoder, storage, handLandmarker
-  hooks/      useHandTracking (camera + detect loop), useInstrument (synth + vocoder + mic), useRecorder
+  lib/        pure logic: musicTheory, handShape, defaultTemplates, gestureMap, chordEngine, harmonyVoicing, fft, pitch, storage, handLandmarker
+  hooks/      useHandTracking (camera + detect loop), useInstrument (synth + harmonizer + mic), useRecorder
+  public/     formant-shifter-worklet.js (formant-preserving phase-vocoder pitch shifter)
   components/ CameraView, KeySelector, ChordDisplay, GestureMappingPanel, RecorderPanel, StatusBar
   App.tsx     wires poses → chord engine → synth + recorder (with frame debouncing)
 ```

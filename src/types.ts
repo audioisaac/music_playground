@@ -48,7 +48,7 @@ export type HandRole = "primary" | "modifier";
 /** Which way a hand points (wrist→fingers). Drives the quality override. */
 export type Orientation = "up" | "down" | "side";
 
-/** Where the sustained sound comes from. `vocal` = the vocoder. */
+/** Where the sustained sound comes from. `vocal` = the live harmonizer. */
 export type SoundSource = "synth" | "vocal";
 
 /** What keeps a chord sounding. */

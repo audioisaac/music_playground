@@ -22,7 +22,7 @@ interface Props {
 
 const SOURCES: Array<{ v: SoundSource; label: string }> = [
   { v: "synth", label: "Synth" },
-  { v: "vocal", label: "Vocoder" },
+  { v: "vocal", label: "Harmonize" },
 ];
 const SUSTAINS: Array<{ v: SustainMode; label: string }> = [
   { v: "hand", label: "Hand up" },
@@ -109,10 +109,10 @@ export function SoundSettings({
 
       {settings.source === "vocal" && (
         <p className="hint">
-          Vocoder: the gesture chord is the carrier and your mic is the modulator,
-          so the <strong>chord sings your words</strong>. Hold a chord and talk or
-          sing. (Robotic/synthetic timbre — your natural voice isn't output, so it
-          barely feeds back on speakers.)
+          Harmonizer: you hear <strong>your own voice plus in-key harmony voices</strong>
+          following the gesture chord (formant-corrected, so they sound natural —
+          not chipmunky). Hold a chord and sing. 🎧 Headphones recommended (your
+          live voice is output).
         </p>
       )}
 
@@ -121,7 +121,7 @@ export function SoundSettings({
           {micError
             ? `Mic error: ${micError}`
             : micReady
-              ? "🎙️ Mic on — built-in speakers are fine (the vocoder doesn't output your raw mic, so it barely feeds back)."
+              ? "🎙️ Mic on. Use headphones for the harmonizer — your live voice is output, so speakers can feed back."
               : "🎤 Starting mic…"}
         </p>
       )}
